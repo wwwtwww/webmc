@@ -9,6 +9,7 @@
         margin: 0;
         overflow: hidden; /* 防止出现滚动条 */
         background-color: #000;
+        font-family: sans-serif;
       }
       #app {
         width: 100vw;
@@ -17,10 +18,64 @@
       canvas {
         display: block;
       }
+
+      /* 快捷栏容器 */
+      #hotbar {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 5px;
+        background-color: rgba(0, 0, 0, 0.5);
+        padding: 5px;
+        border-radius: 5px;
+        z-index: 20;
+        pointer-events: none;
+      }
+
+      /* 每个格子 */
+      .slot {
+        width: 50px;
+        height: 50px;
+        background-color: rgba(255, 255, 255, 0.1);
+        border: 2px solid transparent;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 12px;
+        border-radius: 3px;
+      }
+
+      /* 选中状态 */
+      .slot.selected {
+        border-color: white;
+        background-color: rgba(255, 255, 255, 0.3);
+      }
+
+      /* 方块类型标识文字 */
+      .slot-label {
+        pointer-events: none;
+      }
     </style>
   </head>
   <body>
     <div id="app"></div>
+    
+    <!-- 快捷栏 HTML -->
+    <div id="hotbar">
+      <div class="slot selected" data-index="0"><span class="slot-label">草地</span></div>
+      <div class="slot" data-index="1"><span class="slot-label">泥土</span></div>
+      <div class="slot" data-index="2"><span class="slot-label">木头</span></div>
+      <div class="slot" data-index="3"><span class="slot-label">树叶</span></div>
+      <div class="slot" data-index="4"><span class="slot-label">水源</span></div>
+      <div class="slot" data-index="5"><span class="slot-label">-</span></div>
+      <div class="slot" data-index="6"><span class="slot-label">-</span></div>
+      <div class="slot" data-index="7"><span class="slot-label">-</span></div>
+      <div class="slot" data-index="8"><span class="slot-label">-</span></div>
+    </div>
+
     <script type="module" src="/main.js"></script>
   </body>
 </html>

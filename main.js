@@ -78,8 +78,32 @@ scene.add(directionalLight);
 
 // 5. 初始化世界管理器 (动态加载)
 const worldManager = new WorldManager(scene, 3, 16);
-// 初始加载
 worldManager.update(camera.position);
+
+// 快捷栏状态
+const hotbarItems = [1, 2, 4, 5, 3, 0, 0, 0, 0]; // 1:草地, 2:泥土, 4:木头, 5:树叶, 3:水
+let selectedSlot = 0;
+const slots = document.querySelectorAll('.slot');
+
+function updateHotbarUI() {
+  slots.forEach((slot, index) => {
+    if (index === selectedSlot) {
+      slot.classList.add('selected');
+    } else {
+      slot.classList.remove('selected');
+    }
+  });
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.code.startsWith('Digit')) {
+    const num = parseInt(e.code.replace('Digit', '')) - 1;
+    if (num >= 0 && num <= 8) {
+      selectedSlot = num;
+      updateHotbarUI();
+    }
+  }
+});
 
 // 6. 第一人称控制 (PointerLockControls)
 const controls = new PointerLockControls(camera, document.body);
@@ -142,7 +166,10 @@ document.addEventListener('mousedown', (e) => {
     if (e.button === 0) {
       worldManager.setVoxel(voxelPos.x, voxelPos.y, voxelPos.z, 0);
     } else {
-      worldManager.setVoxel(voxelPos.x, voxelPos.y, voxelPos.z, 2);
+      const blockType = hotbarItems[selectedSlot];
+      if (blockType !== 0) {
+        worldManager.setVoxel(voxelPos.x, voxelPos.y, voxelPos.z, blockType);
+      }
     }
   }
 });
