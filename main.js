@@ -7,7 +7,7 @@ const skyColor = 0x87ceeb; // 天空蓝
 const renderDistance = 3;  // 渲染距离 (区块半径)
 const chunkSize = 16;      // 区块大小
 
-// 1. 初始化场景
+// 1. 初始化场景 (Init scene)
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(skyColor);
 
