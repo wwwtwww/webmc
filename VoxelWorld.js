@@ -158,18 +158,4 @@ export class VoxelWorld {
       generateTree(this, pos.x, pos.y, pos.z);
     }
   }
-
-  // 为旧代码保留兼容性，但内部调用新 API
-  setVoxel(x, y, z, type) { this.setBlock(x, y, z, type); }
-  getVoxel(x, y, z) { return this.getBlock(x, y, z); }
-
-  generateGeometryData() {
-    // 该方法逻辑由于迁移至 Worker，这里仅保留本地测试用的精简版或直接抛错提示
-    console.warn('VoxelWorld.generateGeometryData is deprecated. Use chunkWorker.js instead.');
-    return { positions:[], normals:[], uvs:[], indices:[], colors:[] };
-  }
-
-  generateGeometry() {
-    return new THREE.BufferGeometry();
-  }
 }

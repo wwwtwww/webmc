@@ -266,11 +266,11 @@ document.addEventListener('mousedown', (e) => {
     }
 
     if (e.button === 0) {
-      worldManager.setVoxel(voxelPos.x, voxelPos.y, voxelPos.z, 0);
+      worldManager.setBlock(voxelPos.x, voxelPos.y, voxelPos.z, 0);
     } else {
       const blockType = hotbarItems[selectedSlot];
       if (blockType !== 0) {
-        worldManager.setVoxel(voxelPos.x, voxelPos.y, voxelPos.z, blockType);
+        worldManager.setBlock(voxelPos.x, voxelPos.y, voxelPos.z, blockType);
       }
     }
   }
@@ -311,7 +311,7 @@ function checkCollision(pos) {
   for (let y = minY; y <= maxY; y++) {
     for (let z = minZ; z <= maxZ; z++) {
       for (let x = minX; x <= maxX; x++) {
-        const voxel = worldManager.getVoxel(x, y, z);
+        const voxel = worldManager.getBlock(x, y, z);
         if (voxel !== 0 && voxel !== 3) {
           return true;
         }

@@ -114,24 +114,20 @@ export class WorldManager {
       chunk.world.setBlock(localX, localY, localZ, type);
       
       // 更新当前区块
-      this.updateChunkMesh(chunkX, chunkZ);
+      this.buildMesh(chunkX, chunkZ);
 
       // 如果修改了边界方块，触发相邻区块更新
-      if (localX === 0) this.updateChunkMesh(chunkX - 1, chunkZ);
-      if (localX === this.chunkSize - 1) this.updateChunkMesh(chunkX + 1, chunkZ);
-      if (localZ === 0) this.updateChunkMesh(chunkX, chunkZ - 1);
-      if (localZ === this.chunkSize - 1) this.updateChunkMesh(chunkX, chunkZ + 1);
+      if (localX === 0) this.buildMesh(chunkX - 1, chunkZ);
+      if (localX === this.chunkSize - 1) this.buildMesh(chunkX + 1, chunkZ);
+      if (localZ === 0) this.buildMesh(chunkX, chunkZ - 1);
+      if (localZ === this.chunkSize - 1) this.buildMesh(chunkX, chunkZ + 1);
     }
   }
-
-  // 兼容旧调用
-  getVoxel(x, y, z) { return this.getBlock(x, y, z); }
-  setVoxel(x, y, z, t) { this.setBlock(x, y, z, t); }
 
   /**
    * 构造 18x256x18 的数据发送给 Worker
    */
-  updateChunkMesh(chunkX, chunkZ) {
+  buildMesh(chunkX, chunkZ) {
     const key = `${chunkX},${chunkZ}`;
     const chunk = this.chunks.get(key);
     if (!chunk) return;
@@ -139,12 +135,10 @@ export class WorldManager {
     const pSize = this.chunkSize + 2;
     const paddedData = new Uint8Array(pSize * this.chunkHeight * pSize);
 
-    // 填充数据：采样自身和 4 个邻居
+    // 填充数据：采样自身和 邻居
     for (let y = 0; y < this.chunkHeight; y++) {
       for (let pz = 0; pz < pSize; pz++) {
         for (let px = 0; px < pSize; px++) {
-          // 这里的 px, pz 是 0-17
-          // 转换回世界坐标
           const worldX = chunkX * this.chunkSize + (px - 1);
           const worldZ = chunkZ * this.chunkSize + (pz - 1);
           
@@ -185,13 +179,13 @@ export class WorldManager {
           const newChunk = new Chunk(this.scene, chunkX, chunkZ, this.chunkSize, this.chunkHeight);
           this.chunks.set(key, newChunk);
           // 初始加载网格
-          this.updateChunkMesh(chunkX, chunkZ);
+          this.buildMesh(chunkX, chunkZ);
           
           // 同时触发邻居更新（因为新区块的出现可能让邻居的某些面需要剔除）
-          this.updateChunkMesh(chunkX - 1, chunkZ);
-          this.updateChunkMesh(chunkX + 1, chunkZ);
-          this.updateChunkMesh(chunkX, chunkZ - 1);
-          this.updateChunkMesh(chunkX, chunkZ + 1);
+          this.buildMesh(chunkX - 1, chunkZ);
+          this.buildMesh(chunkX + 1, chunkZ);
+          this.buildMesh(chunkX, chunkZ - 1);
+          this.buildMesh(chunkX, chunkZ + 1);
         }
       }
     }

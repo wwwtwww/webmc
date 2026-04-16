@@ -1,19 +1,28 @@
 # 技术参考与核心 API (Tech Reference)
 
-## 1. Chunk 模块
-* **职责**：管理单一 16x256x16 区域的数据和网格。
+## 1. WorldManager 模块 (世界入口)
+* **职责**：调度无限区块的加载、卸载，并提供跨区块的统一方块读写。
 * **核心方法**：
-    * `setBlock(x, y, z, id)`：安全设置局部坐标的方块数据。
-    * `getBlock(x, y, z)`：获取局部坐标的方块 ID，需包含越界保护。
-    * `buildMesh()`：执行面剔除算法，生成并返回可渲染的 Three.js Mesh 对象。
+    * `getBlock(worldX, worldY, worldZ)`：获取世界坐标下的方块 ID。
+    * `setBlock(worldX, worldY, worldZ, id)`：修改方块并自动触发当前及相邻区块的网格更新。
+    * `update(playerPos)`：根据玩家位置动态管理区块的生命周期。
 
-## 2. 植被系统 (Vegetation)
+## 2. Chunk 模块 (区块单元)
+* **职责**：管理 16x256x16 区域的原始数据。
+* **属性**：
+    * `world`：内部 `VoxelWorld` 实例。
+    * `mesh`：Three.js Mesh 对象。
+* **核心方法**：
+    * `buildMesh()`：构造包含邻居数据的 18x256x18 扩展包，发送至 Worker 进行异步网格计算。
+    * `dispose()`：严谨释放 GPU 几何体、材质以及 CPU 端的 TypedArray。
+
+## 3. 植被系统 (Vegetation)
 * **`generateTree(world, x, y, z)`**
-    * **树干**：以指定坐标为原点，向上生成连续 5 个 `WOOD` (木头) 方块。
-    * **树叶**：在树干顶部区域（如 y+3 到 y+5），生成一个 3x3x3 的 `LEAF` (树叶) 立方体网络。
-    * **安全机制**：放置前必须检查目标坐标是否为 `AIR`，避免覆盖已生成的地形。
+    * **树干**：向上生成 5 个 `WOOD` 方块。
+    * **树冠**：在顶部生成 3x3x3 的 `LEAF` 立方体。
+    * **安全机制**：具备高度越界检查（支持 256 高度）和空气替换检测。
 
-## 3. 物理与碰撞 (Physics & Collision)
-* **AABB 碰撞**：将玩家抽象为一个高 1.8、宽 0.6 的包围盒。
-* **重力循环**：`requestAnimationFrame` 中不断累加向下的 `velocity.y`。
-* **触地逻辑**：向下射线/AABB 检测到非空方块时，强制修正 `position.y` 吸附到方块表面，并且**必须将 `velocity.y` 设为 0**，触发 `isGrounded = true`。
+## 4. 渲染优化 (Rendering)
+* **Worker 并行化**：网格生成逻辑全量迁移至 `chunkWorker.js`。
+* **面剔除 (Culling)**：支持跨区块剔面，接触面不会重复生成顶点。
+* **顶点颜色**：基于世界坐标计算 10% 明暗差，实现零开销棋盘格效果。
