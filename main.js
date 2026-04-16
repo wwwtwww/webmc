@@ -7,11 +7,77 @@ const skyColor = 0x87ceeb; // 天空蓝
 const renderDistance = 3;  // 渲染距离 (区块半径)
 const chunkSize = 16;      // 区块大小
 
+// --- 快捷栏逻辑 (优先初始化以确保可见) ---
+const blockData = {
+  1: { name: '草地', color: '#3dad3d' },
+  2: { name: '泥土', color: '#7d542a' },
+  3: { name: '水源', color: '#1a66e6' },
+  4: { name: '木头', color: '#663300' },
+  5: { name: '树叶', color: '#1a801a' },
+  6: { name: '沙子', color: '#e6cc80' },
+  7: { name: '积雪', color: '#f2f2ff' }
+};
+
+const hotbarItems = [1, 2, 4, 5, 3, 6, 7, 0, 0]; 
+let selectedSlot = 0;
+
+function initHotbarUI() {
+  const hotbar = document.getElementById('hotbar');
+  if (!hotbar) {
+    console.error('找不到 #hotbar 元素');
+    return;
+  }
+  hotbar.innerHTML = ''; 
+
+  hotbarItems.forEach((id, index) => {
+    const slot = document.createElement('div');
+    slot.className = `slot ${index === selectedSlot ? 'selected' : ''}`;
+    slot.dataset.index = index;
+
+    if (id !== 0) {
+      const info = blockData[id];
+      slot.innerHTML = `
+        <div class="cube-icon">
+          <div class="face top" style="background-color: ${info.color}"></div>
+          <div class="face front" style="background-color: ${info.color}"></div>
+          <div class="face right" style="background-color: ${info.color}"></div>
+        </div>
+        <div class="slot-text">${info.name}</div>
+      `;
+    }
+    hotbar.appendChild(slot);
+  });
+}
+
+function updateHotbarUI() {
+  const slots = document.querySelectorAll('.slot');
+  slots.forEach((slot, index) => {
+    if (index === selectedSlot) {
+      slot.classList.add('selected');
+    } else {
+      slot.classList.remove('selected');
+    }
+  });
+}
+
+// 立即运行 UI 初始化
+initHotbarUI();
+
+window.addEventListener('keydown', (e) => {
+  if (e.code.startsWith('Digit')) {
+    const num = parseInt(e.code.replace('Digit', '')) - 1;
+    if (num >= 0 && num <= 8) {
+      selectedSlot = num;
+      updateHotbarUI();
+    }
+  }
+});
+// ---------------------------------------
+
 // 1. 初始化场景 (Init scene)
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(skyColor);
 
-// 添加线性雾，掩盖远处区块的瞬间消失/出现
 const fogFar = renderDistance * chunkSize;
 const fogNear = fogFar * 0.7;
 scene.fog = new THREE.Fog(skyColor, fogNear, fogFar);
@@ -23,7 +89,6 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   1000
 );
-// 设置初始位置在第一个区块正上方
 camera.position.set(8, 15, 8);
 
 // 3. 初始化 WebGL 渲染器
@@ -41,6 +106,7 @@ crosshair.style.width = '20px';
 crosshair.style.height = '20px';
 crosshair.style.transform = 'translate(-50%, -50%)';
 crosshair.style.pointerEvents = 'none';
+crosshair.style.zIndex = '50';
 crosshair.innerHTML = `
   <div style="position: absolute; top: 9px; left: 0; width: 20px; height: 2px; background: white;"></div>
   <div style="position: absolute; top: 0; left: 9px; width: 2px; height: 20px; background: white;"></div>
@@ -58,13 +124,14 @@ instructions.style.cursor = 'pointer';
 instructions.style.backgroundColor = 'rgba(0,0,0,0.5)';
 instructions.style.padding = '20px 0';
 instructions.style.transform = 'translateY(-50%)';
-instructions.style.zIndex = '10';
+instructions.style.zIndex = '1000'; // 确保在最前面
 instructions.innerHTML = `
   <span style="font-size: 24px">点击屏幕开始游戏</span><br/><br/>
   W, A, S, D = 移动<br/>
   鼠标移动 = 视角<br/>
   左键点击 = 挖掘<br/>
-  右键点击 = 放置
+  右键点击 = 放置<br/>
+  数字键 1-7 = 切换方块
 `;
 document.body.appendChild(instructions);
 
@@ -77,33 +144,8 @@ directionalLight.position.set(10, 20, 10);
 scene.add(directionalLight);
 
 // 5. 初始化世界管理器 (动态加载)
-const worldManager = new WorldManager(scene, 3, 16);
+const worldManager = new WorldManager(scene, renderDistance, chunkSize);
 worldManager.update(camera.position);
-
-// 快捷栏状态
-const hotbarItems = [1, 2, 4, 5, 3, 0, 0, 0, 0]; // 1:草地, 2:泥土, 4:木头, 5:树叶, 3:水
-let selectedSlot = 0;
-const slots = document.querySelectorAll('.slot');
-
-function updateHotbarUI() {
-  slots.forEach((slot, index) => {
-    if (index === selectedSlot) {
-      slot.classList.add('selected');
-    } else {
-      slot.classList.remove('selected');
-    }
-  });
-}
-
-window.addEventListener('keydown', (e) => {
-  if (e.code.startsWith('Digit')) {
-    const num = parseInt(e.code.replace('Digit', '')) - 1;
-    if (num >= 0 && num <= 8) {
-      selectedSlot = num;
-      updateHotbarUI();
-    }
-  }
-});
 
 // 6. 第一人称控制 (PointerLockControls)
 const controls = new PointerLockControls(camera, document.body);
@@ -147,7 +189,6 @@ document.addEventListener('mousedown', (e) => {
   if (e.button !== 0 && e.button !== 2) return;
 
   raycaster.setFromCamera(center, camera);
-  // 获取当前所有已加载区块的 Mesh 数组
   const chunkMeshes = Array.from(worldManager.chunks.values()).map(c => c.mesh);
   const intersects = raycaster.intersectObjects(chunkMeshes);
 
@@ -155,7 +196,6 @@ document.addEventListener('mousedown', (e) => {
     const intersect = intersects[0];
     const normal = intersect.face.normal.clone();
     
-    // 稍微偏移以确定方块内部或外部
     let voxelPos;
     if (e.button === 0) {
       voxelPos = intersect.point.clone().sub(normal.multiplyScalar(0.5));
@@ -216,7 +256,6 @@ function checkCollision(pos) {
   return false;
 }
 
-// 增加跳跃按键监听
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Space' && isGrounded && controls.isLocked) {
     velocity.y = jumpSpeed;
@@ -231,7 +270,6 @@ function animate() {
   const delta = Math.min((time - prevTime) / 1000, 0.1);
 
   if (controls.isLocked) {
-    // 动态更新世界区块
     worldManager.update(camera.position);
 
     direction.z = Number(moveState.forward) - Number(moveState.backward);
@@ -263,7 +301,6 @@ function animate() {
 
     let hitGround = false;
 
-    // Y轴移动与碰撞
     camera.position.y += deltaPos.y;
     if (checkCollision(camera.position)) {
       if (velocity.y < 0) {
@@ -285,14 +322,12 @@ function animate() {
     }
     isGrounded = hitGround;
 
-    // X轴
     camera.position.x += deltaPos.x;
     if (checkCollision(camera.position)) {
       camera.position.x -= deltaPos.x;
       velocity.x = 0;
     }
 
-    // Z轴
     camera.position.z += deltaPos.z;
     if (checkCollision(camera.position)) {
       camera.position.z -= deltaPos.z;

@@ -97,8 +97,9 @@ export function generateTree(world, x, y, z) {
   }
 }
 
-// 全局唯一的噪声生成器实例，确保所有区块使用相同的随机种子
-const noise2D = createNoise2D(() => 0.5); // 使用固定种子实现确定性生成
+// 全局唯一的噪声生成器实例
+const heightNoise = createNoise2D(() => 0.5); // 地形高度噪声
+const biomeNoise = createNoise2D(() => 0.8);  // 群落分布噪声
 
 export class VoxelWorld {
   constructor(chunkSize = 16) {
@@ -133,39 +134,56 @@ export class VoxelWorld {
 
   /**
    * 使用 2D 噪声生成地形高度，支持基于区块坐标 (chunkX, chunkZ) 的平滑衔接
+   * 并引入生物群落 (Biomes) 系统
    */
   generateTerrain(chunkX = 0, chunkZ = 0) {
-    const scale = 0.05; // 降低缩放倍率，让山脉更平缓宏大
+    const heightScale = 0.05; 
+    const biomeScale = 0.02; // 群落变化更缓慢
     
     const treeCandidates = [];
 
     for (let z = 0; z < this.chunkSize; ++z) {
       for (let x = 0; x < this.chunkSize; ++x) {
-        // 计算全局世界坐标
         const worldX = chunkX * this.chunkSize + x;
         const worldZ = chunkZ * this.chunkSize + z;
 
-        // 使用全局坐标进行噪声采样，确保边缘无缝
-        const noiseValue = noise2D(worldX * scale, worldZ * scale) * 0.5 + 0.5;
+        // 1. 采样群落噪声
+        const bNoise = biomeNoise(worldX * biomeScale, worldZ * biomeScale);
         
-        // 映射到 [3, 12] 的高度
-        const height = Math.floor(noiseValue * 9) + 3;
+        // 判定群落类型
+        let biomeType = 'GRASS'; 
+        if (bNoise > 0.3) biomeType = 'DESERT';
+        else if (bNoise < -0.3) biomeType = 'SNOWY';
+
+        // 2. 采样高度噪声
+        const hNoise = heightNoise(worldX * heightScale, worldZ * heightScale) * 0.5 + 0.5;
+        const height = Math.floor(hNoise * 9) + 3;
 
         for (let y = 0; y < this.chunkSize; ++y) {
           if (y < height) {
-            if (y === height - 1 && y >= 5) {
-              this.setVoxel(x, y, z, 1); // 草地
-              
-              // 植被生成也改为基于世界坐标的确定性随机，防止每次加载位置不同
-              if (x > 1 && x < this.chunkSize - 2 && z > 1 && z < this.chunkSize - 2) {
-                // 使用简易哈希模拟基于坐标的确定性随机概率
-                const pseudoRandom = Math.abs(Math.sin(worldX * 12.9898 + worldZ * 78.233)) * 43758.5453;
-                if ((pseudoRandom % 1) < 0.02) {
-                  treeCandidates.push({ x, y: y + 1, z });
+            if (y === height - 1) {
+              // 表层方块判定
+              if (y < 5) {
+                this.setVoxel(x, y, z, 6); // 水底或浅滩统一为沙子
+              } else {
+                if (biomeType === 'DESERT') {
+                  this.setVoxel(x, y, z, 6); // 沙子 (ID: 6)
+                } else if (biomeType === 'SNOWY') {
+                  this.setVoxel(x, y, z, 7); // 雪 (ID: 7)
+                } else {
+                  this.setVoxel(x, y, z, 1); // 草地
+                  
+                  // 只有草地才生成树
+                  if (x > 1 && x < this.chunkSize - 2 && z > 1 && z < this.chunkSize - 2) {
+                    const pseudoRandom = Math.abs(Math.sin(worldX * 12.9898 + worldZ * 78.233)) * 43758.5453;
+                    if ((pseudoRandom % 1) < 0.02) {
+                      treeCandidates.push({ x, y: y + 1, z });
+                    }
+                  }
                 }
               }
             } else {
-              this.setVoxel(x, y, z, 2); // 泥土
+              this.setVoxel(x, y, z, 2); // 内部统一为泥土/岩石
             }
           } else if (y < 5) {
             this.setVoxel(x, y, z, 3); // 水
@@ -197,6 +215,8 @@ export class VoxelWorld {
       3: [0.1, 0.4, 0.9], // 水 (蓝色)
       4: [0.4, 0.2, 0.0], // 木头 (深褐色)
       5: [0.1, 0.5, 0.1], // 树叶 (深绿色)
+      6: [0.9, 0.8, 0.5], // 沙子 (沙黄色)
+      7: [0.95, 0.95, 1.0], // 雪 (白色)
     };
 
     for (let y = 0; y < this.chunkSize; ++y) {
