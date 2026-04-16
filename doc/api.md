@@ -1,28 +1,52 @@
-# 技术参考与核心 API (Tech Reference)
+# Minecraft Clone API 文档
 
-## 1. WorldManager 模块 (世界入口)
-* **职责**：调度无限区块的加载、卸载，并提供跨区块的统一方块读写。
-* **核心方法**：
-    * `getBlock(worldX, worldY, worldZ)`：获取世界坐标下的方块 ID。
-    * `setBlock(worldX, worldY, worldZ, id)`：修改方块并自动触发当前及相邻区块的网格更新。
-    * `update(playerPos)`：根据玩家位置动态管理区块的生命周期。
+本文档描述了项目核心组件的接口与协作机制。
 
-## 2. Chunk 模块 (区块单元)
-* **职责**：管理 16x256x16 区域的原始数据。
-* **属性**：
-    * `world`：内部 `VoxelWorld` 实例。
-    * `mesh`：Three.js Mesh 对象。
-* **核心方法**：
-    * `buildMesh()`：构造包含邻居数据的 18x256x18 扩展包，发送至 Worker 进行异步网格计算。
-    * `dispose()`：严谨释放 GPU 几何体、材质以及 CPU 端的 TypedArray。
+## 1. WorldManager (世界管理器)
+负责区块的生命周期管理、视距调度以及主线程与 Worker 间的通信。
 
-## 3. 植被系统 (Vegetation)
-* **`generateTree(world, x, y, z)`**
-    * **树干**：向上生成 5 个 `WOOD` 方块。
-    * **树冠**：在顶部生成 3x3x3 的 `LEAF` 立方体。
-    * **安全机制**：具备高度越界检查（支持 256 高度）和空气替换检测。
+- `update(playerPos: THREE.Vector3)`: 每一帧调用。根据玩家位置加载/卸载区块，并处理脏区块的重建。卸载时会触发邻居区块重绘以修复边界。
+- `setBlock(worldX, worldY, worldZ, type)`: 修改方块。如果在地形生成完成前挖掘（type=0），会设为 **ID 255 (Forced Air)** 以防止被生成算法覆盖。
+- `getBlock(worldX, worldY, worldZ)`: 查询方块 ID。内部会自动将 255 映射回 0（空气）。
 
-## 4. 渲染优化 (Rendering)
-* **Worker 并行化**：网格生成逻辑全量迁移至 `chunkWorker.js`。
-* **面剔除 (Culling)**：支持跨区块剔面，接触面不会重复生成顶点。
-* **顶点颜色**：基于世界坐标计算 10% 明暗差，实现零开销棋盘格效果。
+## 2. Chunk (区块)
+代表 16x256x16 的空间单元。
+
+- `generated`: 布尔值。标记该区块是否已完成初始地形生成。
+- `lastRequestId`: 存储本实例发出的最后一个异步请求 ID，用于校验 Worker 返回消息的时效性。
+
+## 3. VoxelWorld (体素数据模型)
+纯数据容器。方块 ID 采用 Uint8Array 存储。
+
+- **特殊 ID**:
+    - `0`: 空气。
+    - `255`: 强制空气（玩家在生成前预挖的标记）。
+
+## 4. chunkWorker.js (计算核心)
+运行在独立线程中的地形生成与网格化引擎。支持 3D 噪声采样与三线性插值。
+
+### 输入消息格式:
+```javascript
+{
+  paddedData: Uint8Array, // 18x256x18 环境数据
+  chunkSize: 16, chunkHeight: 256,
+  chunkX, chunkZ,
+  version: Number,        // 全局请求请求 ID
+  needsGeneration: Boolean 
+}
+```
+
+### 输出消息格式:
+```javascript
+{
+  opaque: { positions, normals, uvs, colors, indices },
+  transparent: { ... },
+  voxels: Uint8Array | null, 
+  chunkX, chunkZ, version
+}
+```
+
+## 5. 协作流程
+1. **生成与合并**: 当 `needsGeneration` 为 true 时，Worker 生成地形数据。
+2. **非零保护合并**: 主线程接收到 `voxels` 后，遍历数据：仅当 `chunk.world.data[i] === 0` 时才写入。如果该位置已是玩家修改的值（含 255），则保持现状。
+3. **时效校验**: 只有当返回消息的 `version === chunk.lastRequestId` 时，几何体才会被应用。这彻底解决了旧区块卸载后的消息冲突。

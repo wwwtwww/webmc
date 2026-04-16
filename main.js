@@ -55,10 +55,11 @@ const blockData = {
   4: { name: '木头', color: '#663300' },
   5: { name: '树叶', color: '#1a801a' },
   6: { name: '沙子', color: '#e6cc80' },
-  7: { name: '积雪', color: '#f2f2ff' }
+  7: { name: '积雪', color: '#f2f2ff' },
+  8: { name: '玻璃', color: '#aaddff' }
 };
 
-const hotbarItems = [1, 2, 4, 5, 3, 6, 7, 0, 0]; 
+const hotbarItems = [1, 2, 4, 5, 3, 6, 7, 8, 0]; 
 let selectedSlot = 0;
 
 function initHotbarUI() {
@@ -171,7 +172,7 @@ instructions.innerHTML = `
   鼠标移动 = 视角<br/>
   左键点击 = 挖掘<br/>
   右键点击 = 放置<br/>
-  数字键 1-7 = 切换方块<br/>
+  数字键 1-8 = 切换方块<br/>
   F = 切换飞行模式 (GOD MODE)<br/>
   空格/Shift = 飞行升降
 `;
@@ -251,7 +252,7 @@ document.addEventListener('mousedown', (e) => {
   if (e.button !== 0 && e.button !== 2) return;
 
   raycaster.setFromCamera(center, camera);
-  const chunkMeshes = Array.from(worldManager.chunks.values()).map(c => c.mesh);
+  const chunkMeshes = Array.from(worldManager.chunks.values()).flatMap(c => [c.opaqueMesh, c.transparentMesh]);
   const intersects = raycaster.intersectObjects(chunkMeshes);
 
   if (intersects.length > 0) {
@@ -360,6 +361,11 @@ function animate() {
       if (moveState.up || moveState.down) velocity.y += direction.y * speed * delta;
     } else {
       velocity.y -= gravity * delta;
+      // 普通模式跳跃逻辑
+      if (moveState.up && isGrounded) {
+        velocity.y = jumpSpeed;
+        isGrounded = false;
+      }
     }
 
     if (moveState.forward || moveState.backward) velocity.z -= direction.z * speed * delta;

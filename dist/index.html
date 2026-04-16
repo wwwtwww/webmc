@@ -7,74 +7,145 @@
     <style>
       body {
         margin: 0;
-        overflow: hidden; /* 防止出现滚动条 */
+        overflow: hidden;
         background-color: #000;
-        font-family: sans-serif;
-      }
-      #app {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         width: 100vw;
         height: 100vh;
+      }
+      #app {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1;
       }
       canvas {
         display: block;
       }
 
-      /* 快捷栏容器 */
+      /* 快捷栏容器 - 改用 fixed 确保在视口最前方 */
       #hotbar {
-        position: absolute;
-        bottom: 20px;
+        position: fixed;
+        bottom: 30px;
         left: 50%;
         transform: translateX(-50%);
         display: flex;
-        gap: 5px;
-        background-color: rgba(0, 0, 0, 0.5);
-        padding: 5px;
-        border-radius: 5px;
-        z-index: 20;
+        gap: 10px;
+        background-color: rgba(20, 20, 20, 0.8);
+        padding: 10px;
+        border-radius: 12px;
+        z-index: 100; /* 调高 z-index */
         pointer-events: none;
+        border: 2px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
       }
 
       /* 每个格子 */
       .slot {
-        width: 50px;
-        height: 50px;
-        background-color: rgba(255, 255, 255, 0.1);
-        border: 2px solid transparent;
+        width: 64px;
+        height: 64px;
+        background-color: rgba(255, 255, 255, 0.05);
+        border: 2px solid rgba(255, 255, 255, 0.15);
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
-        color: white;
-        font-size: 12px;
-        border-radius: 3px;
+        border-radius: 8px;
+        transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        position: relative;
       }
 
       /* 选中状态 */
       .slot.selected {
-        border-color: white;
-        background-color: rgba(255, 255, 255, 0.3);
+        border-color: #00ffcc;
+        background-color: rgba(0, 255, 204, 0.15);
+        box-shadow: 0 0 20px rgba(0, 255, 204, 0.4);
+        transform: translateY(-10px) scale(1.1);
       }
 
-      /* 方块类型标识文字 */
-      .slot-label {
+      /* CSS 3D 方块图标容器 */
+      .cube-icon {
+        width: 28px;
+        height: 28px;
+        transform-style: preserve-3d;
+        transform: rotateX(-25deg) rotateY(45deg);
+        margin-bottom: 4px;
+      }
+
+      .face {
+        position: absolute;
+        width: 28px;
+        height: 28px;
+        border: 1px solid rgba(0,0,0,0.2);
+        box-sizing: border-box;
+      }
+
+      /* 顶面 */
+      .face.top {
+        transform: rotateX(90deg) translateZ(14px);
+        filter: brightness(1.3);
+      }
+      /* 正面 */
+      .face.front {
+        transform: translateZ(14px);
+        filter: brightness(1.1);
+      }
+      /* 侧面 */
+      .face.right {
+        transform: rotateY(90deg) translateZ(14px);
+        filter: brightness(0.8);
+      }
+
+      /* 物品说明文字 */
+      .slot-text {
+        color: #ddd;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        opacity: 0.8;
+      }
+      .slot.selected .slot-text {
+        color: #fff;
+        opacity: 1;
+        font-weight: bold;
+      }
+
+      /* 调试面板 (F3) */
+      #debug-panel {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        background-color: rgba(0, 0, 0, 0.5);
+        color: #00ffcc;
+        padding: 10px;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 14px;
+        line-height: 1.5;
+        border-radius: 4px;
+        z-index: 150;
+        display: none; /* 默认隐藏 */
         pointer-events: none;
       }
     </style>
-    <script type="module" crossorigin src="/assets/index-CVd-wjva.js"></script>
+    <script type="module" crossorigin src="/assets/index-CbiQFkSq.js"></script>
   </head>
   <body>
+    <!-- 确保 app 和 hotbar 是同级且 hotbar 在后/高 z-index -->
     <div id="app"></div>
+
+    <!-- 调试面板 -->
+    <div id="debug-panel">
+      <div>FPS: <span id="debug-fps">0</span></div>
+      <div>XYZ: <span id="debug-pos">0.00 / 0.00 / 0.00</span></div>
+      <div>Chunk: <span id="debug-chunk">0, 0</span></div>
+      <div>Biome: <span id="debug-biome">Unknown</span></div>
+      <div>Mode: <span id="debug-mode">Survival</span></div>
+    </div>
     
-    <!-- 快捷栏 HTML -->
     <div id="hotbar">
-      <div class="slot selected" data-index="0"><span class="slot-label">草地</span></div>
-      <div class="slot" data-index="1"><span class="slot-label">泥土</span></div>
-      <div class="slot" data-index="2"><span class="slot-label">木头</span></div>
-      <div class="slot" data-index="3"><span class="slot-label">树叶</span></div>
-      <div class="slot" data-index="4"><span class="slot-label">水源</span></div>
-      <div class="slot" data-index="5"><span class="slot-label">-</span></div>
-      <div class="slot" data-index="6"><span class="slot-label">-</span></div>
-      <div class="slot" data-index="7"><span class="slot-label">-</span></div>
-      <div class="slot" data-index="8"><span class="slot-label">-</span></div>
+      <!-- JS 动态生成内容 -->
     </div>
 
   </body>
