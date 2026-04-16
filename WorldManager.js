@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { VoxelWorld } from './VoxelWorld.js';
+import { saveChunkDelta, getChunkDelta } from './db.js';
 
 const worker = new Worker(new URL('./chunkWorker.js', import.meta.url), { type: 'module' });
 
@@ -108,27 +109,43 @@ export class WorldManager {
     const val = chunk.world.getBlock(Math.floor(worldX - chunkX * this.chunkSize), Math.floor(worldY), Math.floor(worldZ - chunkZ * this.chunkSize));
     return val === 255 ? 0 : val;
   }
+setBlock(worldX, worldY, worldZ, type) {
+  const chunkX = Math.floor(worldX / this.chunkSize), chunkZ = Math.floor(worldZ / this.chunkSize);
+  const key = `${chunkX},${chunkZ}`;
+  const chunk = this.chunks.get(key);
+  if (chunk) {
+    const lx = Math.floor(worldX - chunkX * this.chunkSize);
+    const ly = Math.floor(worldY);
+    const lz = Math.floor(worldZ - chunkZ * this.chunkSize);
 
-  setBlock(worldX, worldY, worldZ, type) {
-    const chunkX = Math.floor(worldX / this.chunkSize), chunkZ = Math.floor(worldZ / this.chunkSize);
-    const chunk = this.chunks.get(`${chunkX},${chunkZ}`);
-    if (chunk) {
-      const finalType = (type === 0 && !chunk.generated) ? 255 : type;
-      chunk.world.setBlock(Math.floor(worldX - chunkX * this.chunkSize), Math.floor(worldY), Math.floor(worldZ - chunkZ * this.chunkSize), finalType);
-      this.markDirty(chunkX, chunkZ);
-      const lx = Math.floor(worldX - chunkX * this.chunkSize), lz = Math.floor(worldZ - chunkZ * this.chunkSize);
-      if (lx === 0) this.markDirty(chunkX - 1, chunkZ);
-      if (lx === this.chunkSize - 1) this.markDirty(chunkX + 1, chunkZ);
-      if (lz === 0) this.markDirty(chunkX, chunkZ - 1);
-      if (lz === this.chunkSize - 1) this.markDirty(chunkX, chunkZ + 1);
-    }
+    const finalType = (type === 0 && !chunk.generated) ? 255 : type;
+    chunk.world.setBlock(lx, ly, lz, finalType);
+
+    this.markDirty(chunkX, chunkZ);
+    if (lx === 0) this.markDirty(chunkX - 1, chunkZ);
+    if (lx === this.chunkSize - 1) this.markDirty(chunkX + 1, chunkZ);
+    if (lz === 0) this.markDirty(chunkX, chunkZ - 1);
+    if (lz === this.chunkSize - 1) this.markDirty(chunkX, chunkZ + 1);
+
+    // 异步持久化增量修改
+    saveChunkDelta(key, lx, ly, lz, finalType).catch(err => console.error("Save failed:", err));
   }
-
+}
   markDirty(chunkX, chunkZ) { this.dirtyChunks.add(`${chunkX},${chunkZ}`); }
 
-  _buildMesh(chunkX, chunkZ) {
+  async _buildMesh(chunkX, chunkZ) {
     const key = `${chunkX},${chunkZ}`, chunk = this.chunks.get(key);
     if (!chunk) return;
+
+    // 1. 异步获取该区块的历史修改 (Dexie)
+    let deltas = null;
+    if (!chunk.generated) {
+      try {
+        deltas = await getChunkDelta(key);
+      } catch (err) {
+        console.error("加载存档失败:", err);
+      }
+    }
 
     // 分配唯一的请求 ID
     const rid = ++this.nextRequestId;
@@ -149,7 +166,11 @@ export class WorldManager {
         }
       }
     }
-    worker.postMessage({ paddedData, chunkSize: this.chunkSize, chunkHeight: this.chunkHeight, chunkX, chunkZ, version: rid, needsGeneration: !chunk.generated }, [paddedData.buffer]);
+    worker.postMessage({ 
+      paddedData, chunkSize: this.chunkSize, chunkHeight: this.chunkHeight, 
+      chunkX, chunkZ, version: rid, needsGeneration: !chunk.generated,
+      deltas // 传递增量数据
+    }, [paddedData.buffer]);
   }
 
   update(playerPos) {
