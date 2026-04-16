@@ -2,144 +2,93 @@ import * as THREE from 'three';
 import { createNoise2D } from 'simplex-noise';
 
 // 定义六个面的顶点、法线和 UV 坐标
-// 强制采用逆时针（CCW）绕序，保证 WebGL 背面剔除（Back-face Culling）正常工作。
 // 视角：从方块外部看向该面
 // 顶点顺序统一为: 0:左下(BL), 1:右下(BR), 2:右上(TR), 3:左上(TL)
-// 拆分的两个三角形索引为: [0, 1, 2] 和 [2, 3, 0]，这能确保形成逆时针。
 const faces = [
-  { // 左面 (-x)
-    dir: [ -1,  0,  0, ],
-    corners: [
-      { pos: [ 0, 0, 0 ], uv: [ 0, 0 ] }, // 0: 左下
-      { pos: [ 0, 0, 1 ], uv: [ 1, 0 ] }, // 1: 右下
-      { pos: [ 0, 1, 1 ], uv: [ 1, 1 ] }, // 2: 右上
-      { pos: [ 0, 1, 0 ], uv: [ 0, 1 ] }, // 3: 左上
-    ],
-  },
-  { // 右面 (+x)
-    dir: [  1,  0,  0, ],
-    corners: [
-      { pos: [ 1, 0, 1 ], uv: [ 0, 0 ] }, // 0: 左下
-      { pos: [ 1, 0, 0 ], uv: [ 1, 0 ] }, // 1: 右下
-      { pos: [ 1, 1, 0 ], uv: [ 1, 1 ] }, // 2: 右上
-      { pos: [ 1, 1, 1 ], uv: [ 0, 1 ] }, // 3: 左上
-    ],
-  },
-  { // 下面 (-y)
-    dir: [  0, -1,  0, ],
-    corners: [
-      { pos: [ 0, 0, 0 ], uv: [ 0, 0 ] }, // 0: 左下
-      { pos: [ 1, 0, 0 ], uv: [ 1, 0 ] }, // 1: 右下
-      { pos: [ 1, 0, 1 ], uv: [ 1, 1 ] }, // 2: 右上
-      { pos: [ 0, 0, 1 ], uv: [ 0, 1 ] }, // 3: 左上
-    ],
-  },
-  { // 上面 (+y)
-    dir: [  0,  1,  0, ],
-    corners: [
-      { pos: [ 0, 1, 1 ], uv: [ 0, 0 ] }, // 0: 左下
-      { pos: [ 1, 1, 1 ], uv: [ 1, 0 ] }, // 1: 右下
-      { pos: [ 1, 1, 0 ], uv: [ 1, 1 ] }, // 2: 右上
-      { pos: [ 0, 1, 0 ], uv: [ 0, 1 ] }, // 3: 左上
-    ],
-  },
-  { // 后面 (-z)
-    dir: [  0,  0, -1, ],
-    corners: [
-      { pos: [ 1, 0, 0 ], uv: [ 0, 0 ] }, // 0: 左下
-      { pos: [ 0, 0, 0 ], uv: [ 1, 0 ] }, // 1: 右下
-      { pos: [ 0, 1, 0 ], uv: [ 1, 1 ] }, // 2: 右上
-      { pos: [ 1, 1, 0 ], uv: [ 0, 1 ] }, // 3: 左上
-    ],
-  },
-  { // 前面 (+z)
-    dir: [  0,  0,  1, ],
-    corners: [
-      { pos: [ 0, 0, 1 ], uv: [ 0, 0 ] }, // 0: 左下
-      { pos: [ 1, 0, 1 ], uv: [ 1, 0 ] }, // 1: 右下
-      { pos: [ 1, 1, 1 ], uv: [ 1, 1 ] }, // 2: 右上
-      { pos: [ 0, 1, 1 ], uv: [ 0, 1 ] }, // 3: 左上
-    ],
-  },
+  { dir: [ -1,  0,  0, ], corners: [ { pos: [ 0, 0, 0 ], uv: [ 0, 0 ] }, { pos: [ 0, 0, 1 ], uv: [ 1, 0 ] }, { pos: [ 0, 1, 1 ], uv: [ 1, 1 ] }, { pos: [ 0, 1, 0 ], uv: [ 0, 1 ] } ] },
+  { dir: [  1,  0,  0, ], corners: [ { pos: [ 1, 0, 1 ], uv: [ 0, 0 ] }, { pos: [ 1, 0, 0 ], uv: [ 1, 0 ] }, { pos: [ 1, 1, 0 ], uv: [ 1, 1 ] }, { pos: [ 1, 1, 1 ], uv: [ 0, 1 ] } ] },
+  { dir: [  0, -1,  0, ], corners: [ { pos: [ 0, 0, 0 ], uv: [ 0, 0 ] }, { pos: [ 1, 0, 0 ], uv: [ 1, 0 ] }, { pos: [ 1, 0, 1 ], uv: [ 1, 1 ] }, { pos: [ 0, 0, 1 ], uv: [ 0, 1 ] } ] },
+  { dir: [  0,  1,  0, ], corners: [ { pos: [ 0, 1, 1 ], uv: [ 0, 0 ] }, { pos: [ 1, 1, 1 ], uv: [ 1, 0 ] }, { pos: [ 1, 1, 0 ], uv: [ 1, 1 ] }, { pos: [ 0, 1, 0 ], uv: [ 0, 1 ] } ] },
+  { dir: [  0,  0, -1, ], corners: [ { pos: [ 1, 0, 0 ], uv: [ 0, 0 ] }, { pos: [ 0, 0, 0 ], uv: [ 1, 0 ] }, { pos: [ 0, 1, 0 ], uv: [ 1, 1 ] }, { pos: [ 1, 1, 0 ], uv: [ 0, 1 ] } ] },
+  { dir: [  0,  0,  1, ], corners: [ { pos: [ 0, 0, 1 ], uv: [ 0, 0 ] }, { pos: [ 1, 0, 1 ], uv: [ 1, 0 ] }, { pos: [ 1, 1, 1 ], uv: [ 1, 1 ] }, { pos: [ 0, 1, 1 ], uv: [ 0, 1 ] } ] },
 ];
 
-// 树木生成逻辑：传入区块世界实例、根部生长的起始坐标 (x, y, z)
 export function generateTree(world, x, y, z) {
   const trunkHeight = 5;
-  const woodType = 4; // 木头 ID
-  const leafType = 5; // 树叶 ID
+  const woodType = 4; 
+  const leafType = 5; 
 
-  // 1. 生成树干 (向上 5 格)
   for (let i = 0; i < trunkHeight; i++) {
     const targetY = y + i;
-    // 冲突检查：目标坐标必须是空气，才放置木头
-    if (world.getVoxel(x, targetY, z) === 0) {
-      world.setVoxel(x, targetY, z, woodType);
+    if (world.getBlock(x, targetY, z) === 0) {
+      world.setBlock(x, targetY, z, woodType);
     }
   }
 
-  // 2. 生成树冠 (在 [y+3, y+5] 的 3x3x3 范围)
   for (let ly = y + 3; ly <= y + 5; ly++) {
     for (let lz = z - 1; lz <= z + 1; lz++) {
       for (let lx = x - 1; lx <= x + 1; lx++) {
-        // 削去树冠的最外围 8 个角，让树木显得更圆润 (可选)
         const isCorner = Math.abs(lx - x) === 1 && Math.abs(lz - z) === 1;
-        if (isCorner && (ly === y + 5 || Math.random() < 0.3)) {
-          continue; 
-        }
-        
-        // 冲突检查：只有空气才放置树叶，避免覆盖中间刚生成的树干
-        if (world.getVoxel(lx, ly, lz) === 0) {
-          world.setVoxel(lx, ly, lz, leafType);
+        if (isCorner && (ly === y + 5 || Math.random() < 0.3)) continue; 
+        if (world.getBlock(lx, ly, lz) === 0) {
+          world.setBlock(lx, ly, lz, leafType);
         }
       }
     }
   }
 }
 
-// 全局唯一的噪声生成器实例
-const heightNoise = createNoise2D(() => 0.5); // 地形高度噪声
-const biomeNoise = createNoise2D(() => 0.8);  // 群落分布噪声
+const heightNoise = createNoise2D(() => 0.5);
+const biomeNoise = createNoise2D(() => 0.8);
+
+/**
+ * 外部查询工具：根据全局世界坐标返回群落名称
+ */
+export function getBiomeAt(worldX, worldZ) {
+  const biomeScale = 0.01;
+  const bNoise = biomeNoise(worldX * biomeScale, worldZ * biomeScale);
+  if (bNoise < -0.4) return 'SNOWY (积雪高山)';
+  if (bNoise > 0.4) return 'DESERT (热带沙漠)';
+  return 'GRASS (温带平原)';
+}
 
 export class VoxelWorld {
-  constructor(chunkSize = 16) {
+  constructor(chunkSize = 16, chunkHeight = 256) {
     this.chunkSize = chunkSize;
-    const volume = this.chunkSize * this.chunkSize * this.chunkSize;
+    this.chunkHeight = chunkHeight;
+    const volume = this.chunkSize * this.chunkHeight * this.chunkSize;
     this.data = new Uint8Array(volume);
   }
 
   computeVoxelIndex(x, y, z) {
+    // 采用 y-z-x 存储顺序
     return y * this.chunkSize * this.chunkSize + z * this.chunkSize + x;
   }
 
   isWithinBounds(x, y, z) {
     return (
       x >= 0 && x < this.chunkSize &&
-      y >= 0 && y < this.chunkSize &&
+      y >= 0 && y < this.chunkHeight &&
       z >= 0 && z < this.chunkSize
     );
   }
 
-  setVoxel(x, y, z, type) {
+  setBlock(x, y, z, type) {
     if (!this.isWithinBounds(x, y, z)) return;
     const index = this.computeVoxelIndex(x, y, z);
     this.data[index] = type;
   }
 
-  getVoxel(x, y, z) {
+  getBlock(x, y, z) {
     if (!this.isWithinBounds(x, y, z)) return 0;
     const index = this.computeVoxelIndex(x, y, z);
     return this.data[index];
   }
 
-  /**
-   * 使用 2D 噪声生成地形高度，支持基于区块坐标 (chunkX, chunkZ) 的平滑衔接
-   * 并引入生物群落 (Biomes) 系统
-   */
   generateTerrain(chunkX = 0, chunkZ = 0) {
-    const heightScale = 0.05; 
-    const biomeScale = 0.02; // 群落变化更缓慢
-    
+    const heightScale = 0.04; // 稍微降低频率，使地形更开阔
+    const biomeScale = 0.01;  // 群落尺度变大，方便大范围观察
+    const seaLevel = 60;
     const treeCandidates = [];
 
     for (let z = 0; z < this.chunkSize; ++z) {
@@ -147,33 +96,46 @@ export class VoxelWorld {
         const worldX = chunkX * this.chunkSize + x;
         const worldZ = chunkZ * this.chunkSize + z;
 
-        // 1. 采样群落噪声
+        // 1. 采样群落噪声 [-1, 1]
         const bNoise = biomeNoise(worldX * biomeScale, worldZ * biomeScale);
         
-        // 判定群落类型
-        let biomeType = 'GRASS'; 
-        if (bNoise > 0.3) biomeType = 'DESERT';
-        else if (bNoise < -0.3) biomeType = 'SNOWY';
+        // 2. 基于群落噪声平滑插值地形参数 (Lerp)
+        // 锚点定义：
+        // 积雪高山 (bNoise = -1.0): Base 85, Amp 70 (更高更陡)
+        // 温带平原 (bNoise = 0.0):  Base 66, Amp 4  (极平，利于肉眼辨识)
+        // 热带沙漠 (bNoise = 1.0):  Base 64, Amp 2  (几乎水平)
+        
+        let finalBase, finalAmp, biomeType;
+        if (bNoise < 0) {
+          // 从雪山 (-1) 过渡到平原 (0)
+          const t = bNoise + 1; 
+          finalBase = 85 + (66 - 85) * t;
+          finalAmp = 70 + (4 - 70) * t;
+          biomeType = bNoise < -0.4 ? 'SNOWY' : 'GRASS';
+        } else {
+          // 从平原 (0) 过渡到沙漠 (1)
+          const t = bNoise; 
+          finalBase = 66 + (64 - 66) * t;
+          finalAmp = 4 + (2 - 4) * t;
+          biomeType = bNoise > 0.4 ? 'DESERT' : 'GRASS';
+        }
 
-        // 2. 采样高度噪声
+        // 3. 采样高度噪声并应用当前坐标的插值参数
         const hNoise = heightNoise(worldX * heightScale, worldZ * heightScale) * 0.5 + 0.5;
-        const height = Math.floor(hNoise * 9) + 3;
+        const terrainHeight = Math.floor(finalBase + hNoise * finalAmp);
 
-        for (let y = 0; y < this.chunkSize; ++y) {
-          if (y < height) {
-            if (y === height - 1) {
-              // 表层方块判定
-              if (y < 5) {
-                this.setVoxel(x, y, z, 6); // 水底或浅滩统一为沙子
+        for (let y = 0; y < this.chunkHeight; ++y) {
+          if (y < terrainHeight) {
+            if (y === terrainHeight - 1) {
+              if (y < seaLevel) {
+                this.setBlock(x, y, z, 6); // 水底/浅滩统一为沙子
               } else {
                 if (biomeType === 'DESERT') {
-                  this.setVoxel(x, y, z, 6); // 沙子 (ID: 6)
+                  this.setBlock(x, y, z, 6); // 沙子
                 } else if (biomeType === 'SNOWY') {
-                  this.setVoxel(x, y, z, 7); // 雪 (ID: 7)
+                  this.setBlock(x, y, z, 7); // 雪
                 } else {
-                  this.setVoxel(x, y, z, 1); // 草地
-                  
-                  // 只有草地才生成树
+                  this.setBlock(x, y, z, 1); // 草地
                   if (x > 1 && x < this.chunkSize - 2 && z > 1 && z < this.chunkSize - 2) {
                     const pseudoRandom = Math.abs(Math.sin(worldX * 12.9898 + worldZ * 78.233)) * 43758.5453;
                     if ((pseudoRandom % 1) < 0.02) {
@@ -183,10 +145,10 @@ export class VoxelWorld {
                 }
               }
             } else {
-              this.setVoxel(x, y, z, 2); // 内部统一为泥土/岩石
+              this.setBlock(x, y, z, 2); // 内部泥土
             }
-          } else if (y < 5) {
-            this.setVoxel(x, y, z, 3); // 水
+          } else if (y < seaLevel) {
+            this.setBlock(x, y, z, 3); // 海水
           }
         }
       }
@@ -197,91 +159,17 @@ export class VoxelWorld {
     }
   }
 
-  /**
-   * 生成区块的网格数据 (Positions, Normals, UVs, Indices, Colors)
-   * 支持面剔除和基于顶点颜色的方块渲染
-   */
+  // 为旧代码保留兼容性，但内部调用新 API
+  setVoxel(x, y, z, type) { this.setBlock(x, y, z, type); }
+  getVoxel(x, y, z) { return this.getBlock(x, y, z); }
+
   generateGeometryData() {
-    const positions = [];
-    const normals = [];
-    const uvs = [];
-    const indices = [];
-    const colors = [];
-
-    // 定义不同类型的方块顶点颜色 [R, G, B]
-    const colorMap = {
-      1: [0.2, 0.8, 0.2], // 草地 (绿色)
-      2: [0.5, 0.3, 0.1], // 泥土 (棕色)
-      3: [0.1, 0.4, 0.9], // 水 (蓝色)
-      4: [0.4, 0.2, 0.0], // 木头 (深褐色)
-      5: [0.1, 0.5, 0.1], // 树叶 (深绿色)
-      6: [0.9, 0.8, 0.5], // 沙子 (沙黄色)
-      7: [0.95, 0.95, 1.0], // 雪 (白色)
-    };
-
-    for (let y = 0; y < this.chunkSize; ++y) {
-      for (let z = 0; z < this.chunkSize; ++z) {
-        for (let x = 0; x < this.chunkSize; ++x) {
-          const voxel = this.getVoxel(x, y, z);
-          if (voxel !== 0) { // 如果不是空气
-            const baseColor = colorMap[voxel] || [1, 1, 1]; // 默认白色
-            
-            // 简单的棋盘格光影效果：计算坐标之和，如果为奇数，则将该方块各颜色通道变暗 10%
-            const isEven = (x + y + z) % 2 === 0;
-            const voxelColor = isEven 
-              ? baseColor 
-              : [baseColor[0] * 0.9, baseColor[1] * 0.9, baseColor[2] * 0.9];
-
-            for (const { dir, corners } of faces) {
-              const neighbor = this.getVoxel(
-                x + dir[0],
-                y + dir[1],
-                z + dir[2]
-              );
-              
-              // 面剔除：
-              // 1. 如果相邻方块是空气 (0)，生成该面
-              // 2. 为了防止水透视隐藏泥土，如果当前是泥土而相邻是水，泥土该面也应可见
-              const isNeighborAir = neighbor === 0;
-              const isNeighborWater = (voxel !== 3 && neighbor === 3);
-
-              if (isNeighborAir || isNeighborWater) {
-                const ndx = positions.length / 3;
-                
-                for (const { pos, uv } of corners) {
-                  positions.push(pos[0] + x, pos[1] + y, pos[2] + z);
-                  normals.push(dir[0], dir[1], dir[2]);
-                  uvs.push(uv[0], uv[1]); 
-                  colors.push(...voxelColor); // 推入顶点颜色
-                }
-                
-                indices.push(
-                  ndx, ndx + 1, ndx + 2,
-                  ndx + 2, ndx + 3, ndx
-                );
-              }
-            }
-          }
-        }
-      }
-    }
-
-    return { positions, normals, uvs, indices, colors };
+    // 该方法逻辑由于迁移至 Worker，这里仅保留本地测试用的精简版或直接抛错提示
+    console.warn('VoxelWorld.generateGeometryData is deprecated. Use chunkWorker.js instead.');
+    return { positions:[], normals:[], uvs:[], indices:[], colors:[] };
   }
 
-  /**
-   * 返回 Three.js 可用的 BufferGeometry
-   */
   generateGeometry() {
-    const { positions, normals, uvs, indices, colors } = this.generateGeometryData();
-    
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
-    geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3));
-    geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
-    geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
-    geometry.setIndex(indices);
-    
-    return geometry;
+    return new THREE.BufferGeometry();
   }
 }

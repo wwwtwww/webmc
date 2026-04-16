@@ -111,11 +111,37 @@
         opacity: 1;
         font-weight: bold;
       }
+
+      /* 调试面板 (F3) */
+      #debug-panel {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        background-color: rgba(0, 0, 0, 0.5);
+        color: #00ffcc;
+        padding: 10px;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 14px;
+        line-height: 1.5;
+        border-radius: 4px;
+        z-index: 150;
+        display: none; /* 默认隐藏 */
+        pointer-events: none;
+      }
     </style>
   </head>
   <body>
     <!-- 确保 app 和 hotbar 是同级且 hotbar 在后/高 z-index -->
     <div id="app"></div>
+
+    <!-- 调试面板 -->
+    <div id="debug-panel">
+      <div>FPS: <span id="debug-fps">0</span></div>
+      <div>XYZ: <span id="debug-pos">0.00 / 0.00 / 0.00</span></div>
+      <div>Chunk: <span id="debug-chunk">0, 0</span></div>
+      <div>Biome: <span id="debug-biome">Unknown</span></div>
+      <div>Mode: <span id="debug-mode">Survival</span></div>
+    </div>
     
     <div id="hotbar">
       <!-- JS 动态生成内容 -->

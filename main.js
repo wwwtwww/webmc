@@ -1,11 +1,51 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { WorldManager } from './WorldManager.js';
+import { getBiomeAt } from './VoxelWorld.js';
 
 // 0. 配置常量
 const skyColor = 0x87ceeb; // 天空蓝
 const renderDistance = 3;  // 渲染距离 (区块半径)
 const chunkSize = 16;      // 区块大小
+
+// --- 调试面板逻辑 (F3) ---
+let showDebug = false;
+const debugPanel = document.getElementById('debug-panel');
+const debugFps = document.getElementById('debug-fps');
+const debugPos = document.getElementById('debug-pos');
+const debugChunk = document.getElementById('debug-chunk');
+const debugBiome = document.getElementById('debug-biome');
+const debugMode = document.getElementById('debug-mode');
+
+let frameCount = 0;
+let lastFpsUpdate = 0;
+
+function updateDebugPanel() {
+  if (!showDebug) return;
+
+  // 更新坐标与区块信息
+  const pos = camera.position;
+  debugPos.innerText = `${pos.x.toFixed(2)} / ${pos.y.toFixed(2)} / ${pos.z.toFixed(2)}`;
+  
+  const cx = Math.floor(pos.x / chunkSize);
+  const cz = Math.floor(pos.z / chunkSize);
+  debugChunk.innerText = `${cx}, ${cz}`;
+
+  // 更新群落信息
+  debugBiome.innerText = getBiomeAt(pos.x, pos.z);
+
+  // 更新模式信息
+  debugMode.innerText = isFlying ? 'GOD MODE (上帝飞行)' : 'SURVIVAL (生存物理)';
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'F3') {
+    e.preventDefault();
+    showDebug = !showDebug;
+    debugPanel.style.display = showDebug ? 'block' : 'none';
+  }
+});
+// -----------------------
 
 // --- 快捷栏逻辑 (优先初始化以确保可见) ---
 const blockData = {
@@ -89,7 +129,7 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   1000
 );
-camera.position.set(8, 15, 8);
+camera.position.set(8, 100, 8);
 
 // 3. 初始化 WebGL 渲染器
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -131,7 +171,9 @@ instructions.innerHTML = `
   鼠标移动 = 视角<br/>
   左键点击 = 挖掘<br/>
   右键点击 = 放置<br/>
-  数字键 1-7 = 切换方块
+  数字键 1-7 = 切换方块<br/>
+  F = 切换飞行模式 (GOD MODE)<br/>
+  空格/Shift = 飞行升降
 `;
 document.body.appendChild(instructions);
 
@@ -161,14 +203,32 @@ controls.addEventListener('unlock', () => {
 });
 scene.add(controls.getObject());
 
-// 7. 移动逻辑 (WASD)
-const moveState = { forward: false, backward: false, left: false, right: false };
+// 7. 移动逻辑 (WASD + Flight)
+const moveState = { 
+  forward: false, 
+  backward: false, 
+  left: false, 
+  right: false,
+  up: false,
+  down: false
+};
+let isFlying = false;
+
 document.addEventListener('keydown', (e) => {
   switch (e.code) {
     case 'KeyW': moveState.forward = true; break;
     case 'KeyS': moveState.backward = true; break;
     case 'KeyA': moveState.left = true; break;
     case 'KeyD': moveState.right = true; break;
+    case 'Space': moveState.up = true; break;
+    case 'ShiftLeft': moveState.down = true; break;
+    case 'KeyF': 
+      if (controls.isLocked) {
+        isFlying = !isFlying;
+        console.log(`飞行模式: ${isFlying ? '开启' : '关闭'}`);
+        velocity.set(0, 0, 0); // 切换模式时重置速度
+      }
+      break;
   }
 });
 document.addEventListener('keyup', (e) => {
@@ -177,6 +237,8 @@ document.addEventListener('keyup', (e) => {
     case 'KeyS': moveState.backward = false; break;
     case 'KeyA': moveState.left = false; break;
     case 'KeyD': moveState.right = false; break;
+    case 'Space': moveState.up = false; break;
+    case 'ShiftLeft': moveState.down = false; break;
   }
 });
 
@@ -236,6 +298,9 @@ const jumpSpeed = 10.0;
 let isGrounded = false;
 
 function checkCollision(pos) {
+  // 飞行模式下禁用碰撞检测 (Noclip)
+  if (isFlying) return false;
+
   const minX = Math.floor(pos.x - playerRadius);
   const maxX = Math.floor(pos.x + playerRadius);
   const minY = Math.floor(pos.y - eyeHeight + 0.01);
@@ -255,35 +320,52 @@ function checkCollision(pos) {
   }
   return false;
 }
-
-document.addEventListener('keydown', (e) => {
-  if (e.code === 'Space' && isGrounded && controls.isLocked) {
-    velocity.y = jumpSpeed;
-    isGrounded = false;
-  }
-});
-
 function animate() {
   requestAnimationFrame(animate);
 
   const time = performance.now();
   const delta = Math.min((time - prevTime) / 1000, 0.1);
 
+  // 更新 FPS 计算
+  frameCount++;
+  if (time > lastFpsUpdate + 1000) {
+    debugFps.innerText = Math.round((frameCount * 1000) / (time - lastFpsUpdate));
+    frameCount = 0;
+    lastFpsUpdate = time;
+  }
+
   if (controls.isLocked) {
+    // 动态更新世界区块
     worldManager.update(camera.position);
 
+    // 更新调试面板信息
+    updateDebugPanel();
+
+    // 计算移动方向
     direction.z = Number(moveState.forward) - Number(moveState.backward);
     direction.x = Number(moveState.right) - Number(moveState.left);
+    direction.y = Number(moveState.up) - Number(moveState.down);
     direction.normalize();
 
-    velocity.x -= velocity.x * 10.0 * delta;
-    velocity.z -= velocity.z * 10.0 * delta;
-    velocity.y -= gravity * delta;
+    // 物理参数
+    const speed = isFlying ? 80.0 : 40.0; // 飞行速度更快
+    const friction = 10.0;
 
-    const speed = 40.0;
+    // 水平与垂直速度处理
+    velocity.x -= velocity.x * friction * delta;
+    velocity.z -= velocity.z * friction * delta;
+    
+    if (isFlying) {
+      velocity.y -= velocity.y * friction * delta;
+      if (moveState.up || moveState.down) velocity.y += direction.y * speed * delta;
+    } else {
+      velocity.y -= gravity * delta;
+    }
+
     if (moveState.forward || moveState.backward) velocity.z -= direction.z * speed * delta;
     if (moveState.left || moveState.right) velocity.x -= direction.x * speed * delta;
 
+    // 计算世界坐标系位移
     const right = new THREE.Vector3();
     right.setFromMatrixColumn(camera.matrix, 0);
     right.y = 0;
@@ -301,6 +383,7 @@ function animate() {
 
     let hitGround = false;
 
+    // Y轴位移与碰撞
     camera.position.y += deltaPos.y;
     if (checkCollision(camera.position)) {
       if (velocity.y < 0) {
@@ -312,7 +395,8 @@ function animate() {
       velocity.y = 0;
     }
     
-    if (!hitGround && velocity.y <= 0) {
+    // 地面贴合检测 (非飞行模式)
+    if (!isFlying && !hitGround && velocity.y <= 0) {
        const probe = camera.position.clone();
        probe.y -= 0.05;
        if (checkCollision(probe)) {
@@ -322,20 +406,23 @@ function animate() {
     }
     isGrounded = hitGround;
 
+    // X轴位移与碰撞
     camera.position.x += deltaPos.x;
     if (checkCollision(camera.position)) {
       camera.position.x -= deltaPos.x;
       velocity.x = 0;
     }
 
+    // Z轴位移与碰撞
     camera.position.z += deltaPos.z;
     if (checkCollision(camera.position)) {
       camera.position.z -= deltaPos.z;
       velocity.z = 0;
     }
 
-    if (camera.position.y < -20) {
-      camera.position.set(8, 15, 8);
+    // 虚空重置 (仅在非飞行模式)
+    if (!isFlying && camera.position.y < -20) {
+      camera.position.set(8, 100, 8);
       velocity.set(0, 0, 0);
     }
   }

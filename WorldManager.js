@@ -2,21 +2,19 @@ import * as THREE from 'three';
 import { VoxelWorld } from './VoxelWorld.js';
 
 // 创建全局 Worker 实例
-// 在 Vite 中使用 new URL(...) 会自动处理 Worker 路径
 const worker = new Worker(new URL('./chunkWorker.js', import.meta.url), { type: 'module' });
 
 export class Chunk {
-  constructor(scene, chunkX, chunkZ, chunkSize = 16) {
+  constructor(scene, chunkX, chunkZ, chunkSize = 16, chunkHeight = 256) {
     this.scene = scene;
     this.chunkX = chunkX;
     this.chunkZ = chunkZ;
     this.chunkSize = chunkSize;
+    this.chunkHeight = chunkHeight;
 
-    // 1. 初始化数据
-    this.world = new VoxelWorld(this.chunkSize);
+    this.world = new VoxelWorld(this.chunkSize, this.chunkHeight);
     this.world.generateTerrain(this.chunkX, this.chunkZ); 
 
-    // 2. 创建一个空的 Mesh 占位
     const geometry = new THREE.BufferGeometry();
     const material = new THREE.MeshStandardMaterial({ 
       vertexColors: true,
@@ -31,20 +29,7 @@ export class Chunk {
     this.mesh.position.set(this.chunkX * this.chunkSize, 0, this.chunkZ * this.chunkSize);
     this.scene.add(this.mesh);
 
-    // 3. 异步生成网格
-    this.updateMesh();
-  }
-
-  /**
-   * 将数据发送给 Worker 进行异步并行计算
-   */
-  updateMesh() {
-    worker.postMessage({
-      data: this.world.data, // Uint8Array 会被拷贝 (保持主线程物理可用)
-      chunkSize: this.chunkSize,
-      chunkX: this.chunkX,
-      chunkZ: this.chunkZ
-    });
+    // 初次加载不需要 paddedData (因为邻居可能还没加载)，或者由 WorldManager 统一调度
   }
 
   /**
@@ -54,11 +39,9 @@ export class Chunk {
     const { positions, normals, uvs, colors, indices } = geoData;
     const geometry = this.mesh.geometry;
 
-    // 清理旧属性
     if (geometry.index) geometry.setIndex(null);
     Object.keys(geometry.attributes).forEach(key => geometry.deleteAttribute(key));
 
-    // 设置新属性
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
     geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
@@ -86,15 +69,15 @@ export class Chunk {
 }
 
 export class WorldManager {
-  constructor(scene, renderDistance = 3, chunkSize = 16) {
+  constructor(scene, renderDistance = 3, chunkSize = 16, chunkHeight = 256) {
     this.scene = scene;
     this.chunkSize = chunkSize;
+    this.chunkHeight = chunkHeight;
     this.renderDistance = renderDistance;
     this.chunks = new Map();
     this.lastChunkX = null;
     this.lastChunkZ = null;
 
-    // 全局监听 Worker 回传
     worker.onmessage = (e) => {
       const { chunkX, chunkZ, ...geoData } = e.data;
       const key = `${chunkX},${chunkZ}`;
@@ -105,7 +88,7 @@ export class WorldManager {
     };
   }
 
-  getVoxel(worldX, worldY, worldZ) {
+  getBlock(worldX, worldY, worldZ) {
     const chunkX = Math.floor(worldX / this.chunkSize);
     const chunkZ = Math.floor(worldZ / this.chunkSize);
     const key = `${chunkX},${chunkZ}`;
@@ -114,27 +97,79 @@ export class WorldManager {
     const localX = Math.floor(worldX - chunkX * this.chunkSize);
     const localY = Math.floor(worldY);
     const localZ = Math.floor(worldZ - chunkZ * this.chunkSize);
-    return chunk.world.getVoxel(localX, localY, localZ);
+    return chunk.world.getBlock(localX, localY, localZ);
   }
 
-  setVoxel(worldX, worldY, worldZ, type) {
+  setBlock(worldX, worldY, worldZ, type) {
     const chunkX = Math.floor(worldX / this.chunkSize);
     const chunkZ = Math.floor(worldZ / this.chunkSize);
     const key = `${chunkX},${chunkZ}`;
+    
     const chunk = this.chunks.get(key);
     if (chunk) {
       const localX = Math.floor(worldX - chunkX * this.chunkSize);
       const localY = Math.floor(worldY);
       const localZ = Math.floor(worldZ - chunkZ * this.chunkSize);
-      chunk.world.setVoxel(localX, localY, localZ, type);
-      chunk.updateMesh();
+      
+      chunk.world.setBlock(localX, localY, localZ, type);
+      
+      // 更新当前区块
+      this.updateChunkMesh(chunkX, chunkZ);
+
+      // 如果修改了边界方块，触发相邻区块更新
+      if (localX === 0) this.updateChunkMesh(chunkX - 1, chunkZ);
+      if (localX === this.chunkSize - 1) this.updateChunkMesh(chunkX + 1, chunkZ);
+      if (localZ === 0) this.updateChunkMesh(chunkX, chunkZ - 1);
+      if (localZ === this.chunkSize - 1) this.updateChunkMesh(chunkX, chunkZ + 1);
     }
+  }
+
+  // 兼容旧调用
+  getVoxel(x, y, z) { return this.getBlock(x, y, z); }
+  setVoxel(x, y, z, t) { this.setBlock(x, y, z, t); }
+
+  /**
+   * 构造 18x256x18 的数据发送给 Worker
+   */
+  updateChunkMesh(chunkX, chunkZ) {
+    const key = `${chunkX},${chunkZ}`;
+    const chunk = this.chunks.get(key);
+    if (!chunk) return;
+
+    const pSize = this.chunkSize + 2;
+    const paddedData = new Uint8Array(pSize * this.chunkHeight * pSize);
+
+    // 填充数据：采样自身和 4 个邻居
+    for (let y = 0; y < this.chunkHeight; y++) {
+      for (let pz = 0; pz < pSize; pz++) {
+        for (let px = 0; px < pSize; px++) {
+          // 这里的 px, pz 是 0-17
+          // 转换回世界坐标
+          const worldX = chunkX * this.chunkSize + (px - 1);
+          const worldZ = chunkZ * this.chunkSize + (pz - 1);
+          
+          const voxel = this.getBlock(worldX, y, worldZ);
+          const pIndex = y * pSize * pSize + pz * pSize + px;
+          paddedData[pIndex] = voxel;
+        }
+      }
+    }
+
+    worker.postMessage({
+      paddedData,
+      chunkSize: this.chunkSize,
+      chunkHeight: this.chunkHeight,
+      chunkX,
+      chunkZ
+    }, [paddedData.buffer]);
   }
 
   update(playerPos) {
     const currentChunkX = Math.floor(playerPos.x / this.chunkSize);
     const currentChunkZ = Math.floor(playerPos.z / this.chunkSize);
+
     if (this.lastChunkX === currentChunkX && this.lastChunkZ === currentChunkZ) return;
+
     this.lastChunkX = currentChunkX;
     this.lastChunkZ = currentChunkZ;
 
@@ -145,11 +180,22 @@ export class WorldManager {
         const chunkZ = currentChunkZ + dz;
         const key = `${chunkX},${chunkZ}`;
         expectedKeys.add(key);
+
         if (!this.chunks.has(key)) {
-          this.chunks.set(key, new Chunk(this.scene, chunkX, chunkZ, this.chunkSize));
+          const newChunk = new Chunk(this.scene, chunkX, chunkZ, this.chunkSize, this.chunkHeight);
+          this.chunks.set(key, newChunk);
+          // 初始加载网格
+          this.updateChunkMesh(chunkX, chunkZ);
+          
+          // 同时触发邻居更新（因为新区块的出现可能让邻居的某些面需要剔除）
+          this.updateChunkMesh(chunkX - 1, chunkZ);
+          this.updateChunkMesh(chunkX + 1, chunkZ);
+          this.updateChunkMesh(chunkX, chunkZ - 1);
+          this.updateChunkMesh(chunkX, chunkZ + 1);
         }
       }
     }
+
     for (const [key, chunk] of this.chunks.entries()) {
       if (!expectedKeys.has(key)) {
         chunk.dispose();
