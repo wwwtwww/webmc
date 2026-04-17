@@ -50,3 +50,9 @@
 1. **生成与合并**: 当 `needsGeneration` 为 true 时，Worker 生成地形数据。
 2. **非零保护合并**: 主线程接收到 `voxels` 后，遍历数据：仅当 `chunk.world.data[i] === 0` 时才写入。如果该位置已是玩家修改的值（含 255），则保持现状。
 3. **时效校验**: 只有当返回消息的 `version === chunk.lastRequestId` 时，几何体才会被应用。这彻底解决了旧区块卸载后的消息冲突。
+
+## 6. AudioManager (音效管理器)
+基于 THREE.AudioListener 和 THREE.Audio 的音频多轨道池化管理系统。
+
+- `loadSounds()`: 异步预加载所有必须的 `.ogg` 音效文件并分配至对象池。
+- `playSound(name, volume)`: 支持打断最旧的音频以重叠播放（LRU轮转），内部带有微小音高偏移 (Detune) 增强沉浸感。

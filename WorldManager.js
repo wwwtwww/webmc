@@ -133,23 +133,44 @@ setBlock(worldX, worldY, worldZ, type) {
 }
   markDirty(chunkX, chunkZ) { this.dirtyChunks.add(`${chunkX},${chunkZ}`); }
 
+  getHighestBlock(worldX, worldZ) {
+    const chunkX = Math.floor(worldX / this.chunkSize);
+    const chunkZ = Math.floor(worldZ / this.chunkSize);
+    const chunk = this.chunks.get(`${chunkX},${chunkZ}`);
+    if (!chunk || !chunk.generated) return null;
+
+    const lx = Math.floor(worldX - chunkX * this.chunkSize);
+    const lz = Math.floor(worldZ - chunkZ * this.chunkSize);
+
+    // 从天际向下查找第一个非空、非水方块
+    for (let y = this.chunkHeight - 1; y >= 0; y--) {
+      const voxel = chunk.world.getBlock(lx, y, lz);
+      if (voxel !== 0 && voxel !== 3 && voxel !== 255) {
+        return y;
+      }
+    }
+    return 0;
+  }
+
   async _buildMesh(chunkX, chunkZ) {
     const key = `${chunkX},${chunkZ}`, chunk = this.chunks.get(key);
     if (!chunk) return;
+
+    // 核心修复：立即分配 rid 并记录，确保后续 await 返回后能检测到更新的请求
+    const rid = ++this.nextRequestId;
+    chunk.lastRequestId = rid;
 
     // 1. 异步获取该区块的历史修改 (Dexie)
     let deltas = null;
     if (!chunk.generated) {
       try {
         deltas = await getChunkDelta(key);
+        // 如果在等待期间有更晚的请求发出，则放弃当前请求
+        if (chunk.lastRequestId !== rid) return;
       } catch (err) {
         console.error("加载存档失败:", err);
       }
     }
-
-    // 分配唯一的请求 ID
-    const rid = ++this.nextRequestId;
-    chunk.lastRequestId = rid;
 
     const pSize = this.chunkSize + 2, paddedData = new Uint8Array(pSize * this.chunkHeight * pSize);
     for (let y = 0; y < this.chunkHeight; y++) {

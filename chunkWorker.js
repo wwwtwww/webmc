@@ -11,6 +11,11 @@ const BIOME_SCALE = 0.005;
 const SEA_LEVEL = 60;
 const aoTable = [0.4, 0.6, 0.8, 1.0];
 
+// 安全区参数
+const SPAWN_RADIUS = 30;
+const BLEND_RADIUS = 20;
+const SAFE_HEIGHT = 64;
+
 const faces = [
   { dir: [ -1,  0,  0, ], corners: [ { pos: [ 0, 0, 0 ], uv: [ 0, 0 ] }, { pos: [ 0, 0, 1 ], uv: [ 1, 0 ] }, { pos: [ 0, 1, 1 ], uv: [ 1, 1 ] }, { pos: [ 0, 1, 0 ], uv: [ 0, 1 ] } ] },
   { dir: [  1,  0,  0, ], corners: [ { pos: [ 1, 0, 1 ], uv: [ 0, 0 ] }, { pos: [ 1, 0, 0 ], uv: [ 1, 0 ] }, { pos: [ 1, 1, 0 ], uv: [ 1, 1 ] }, { pos: [ 1, 1, 1 ], uv: [ 0, 1 ] } ] },
@@ -43,6 +48,12 @@ function isTransparent(id) {
 }
 function vertexAO(s1, s2, c) { return s1 && s2 ? 0 : 3 - (Number(s1) + Number(s2) + Number(c)); }
 
+// 基于坐标的确定的伪随机数生成器 (0.0 到 1.0)
+function pseudoRandom(x, z) {
+  const n = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453123;
+  return n - Math.floor(n);
+}
+
 function growTree(data, x, y, z, pSize, chunkHeight) {
   const pSize2 = pSize * pSize, trunkH = 5;
   for (let i = 0; i < trunkH; i++) {
@@ -70,9 +81,97 @@ self.onmessage = function(e) {
   let newVoxels = null;
 
   if (needsGeneration) {
-    // 1. 三维群落噪声地形生成
-    // ... (保持现有生成逻辑)
-    // (代码省略，实际 replace 会包含完整逻辑)
+    for (let z = 0; z < pSize; z++) {
+      for (let x = 0; x < pSize; x++) {
+        const worldX = chunkX * chunkSize + x - 1;
+        const worldZ = chunkZ * chunkSize + z - 1;
+
+        // 计算距离与安全区混合因子
+        const distance = Math.sqrt(worldX * worldX + worldZ * worldZ);
+        let factor = 1.0;
+        if (distance <= SPAWN_RADIUS) {
+          factor = 0.0;
+        } else if (distance < SPAWN_RADIUS + BLEND_RADIUS) {
+          // 平滑过渡 (0.0 到 1.0)
+          const t = (distance - SPAWN_RADIUS) / BLEND_RADIUS;
+          factor = t * t * (3 - 2 * t); // Smoothstep 公式让过渡更自然
+        }
+
+        const bNoise = biomeNoise(worldX * BIOME_SCALE, worldZ * BIOME_SCALE);
+        let biome = 'GRASS';
+        if (factor > 0) {
+           if (bNoise < -0.4) biome = 'SNOWY';
+           else if (bNoise > 0.4) biome = 'DESERT';
+        }
+        // factor == 0 时强制使用草地 (因为默认 biome 就是 GRASS)
+
+        const hNoise = (noise3D(worldX * 0.005, 0, worldZ * 0.005) + 1) * 0.5;
+        const randomBaseHeight = SEA_LEVEL + hNoise * 40;
+        // 混合基础高度
+        const baseHeight = lerp(SAFE_HEIGHT, randomBaseHeight, factor);
+
+        for (let y = 0; y < chunkHeight; y++) {
+          const idx = y * pSize2 + z * pSize + x;
+          
+          let density;
+          if (factor === 0) {
+            // 完全安全区：地表以下全为实心，以上全为空气
+            density = (baseHeight - y);
+          } else {
+            const dNoise = noise3D(worldX * NOISE_SCALE, y * NOISE_SCALE * 1.5, worldZ * NOISE_SCALE);
+            const randomDensity = dNoise + (randomBaseHeight - y) * 0.1;
+            // 完全安全区密度公式
+            const safeDensity = (baseHeight - y);
+            // 混合 3D 密度
+            density = lerp(safeDensity, randomDensity, factor);
+          }
+
+          if (density > 0) {
+            if (y > SEA_LEVEL + 30 && biome === 'SNOWY') {
+              localData[idx] = 7;
+            } else if (y < SEA_LEVEL + 2 && biome === 'DESERT') {
+              localData[idx] = 6;
+            } else {
+              let surfDensity;
+              if (factor === 0) {
+                surfDensity = (baseHeight - (y + 1));
+              } else {
+                const dNoise = noise3D(worldX * NOISE_SCALE, (y + 1) * NOISE_SCALE * 1.5, worldZ * NOISE_SCALE);
+                const randomSurfDensity = dNoise + (randomBaseHeight - (y + 1)) * 0.1;
+                const safeSurfDensity = (baseHeight - (y + 1));
+                surfDensity = lerp(safeSurfDensity, randomSurfDensity, factor);
+              }
+              
+              if (surfDensity <= 0) {
+                localData[idx] = (biome === 'DESERT') ? 6 : 1;
+              } else {
+                localData[idx] = (biome === 'DESERT') ? 6 : 2;
+              }
+            }
+          } else if (y < SEA_LEVEL && factor > 0) {
+            // 安全区不允许有水淹没陆地 (SAFE_HEIGHT 设定为 64，大于 60)
+            localData[idx] = 3;
+          }
+        }
+        
+        // 生成树木，即使在安全区也可以长树
+        if (biome === 'GRASS' && pseudoRandom(worldX, worldZ) < 0.01) {
+          let surfaceY = -1;
+          // 从上往下扫描寻找真实的最高地表方块
+          for (let y = chunkHeight - 1; y >= 0; y--) {
+            const block = localData[y * pSize2 + z * pSize + x];
+            if (block !== 0 && block !== 3) { // 遇到非空气且非水的方块
+              if (block === 1) surfaceY = y;  // 只有最高方块是草地才允许长树
+              break;
+            }
+          }
+          
+          if (surfaceY > SEA_LEVEL && surfaceY < chunkHeight - 10) {
+             growTree(localData, x, surfaceY + 1, z, pSize, chunkHeight);
+          }
+        }
+      }
+    }
   } else {
     localData.set(paddedData);
   }
@@ -82,10 +181,24 @@ self.onmessage = function(e) {
   if (deltas) {
     for (const dKey in deltas) {
       const [lx, ly, lz] = dKey.split('_').map(Number);
-      // 映射到 paddedData 坐标系 (x+1, y, z+1)
       const px = lx + 1, pz = lz + 1;
       const idx = ly * pSize2 + pz * pSize + px;
       localData[idx] = deltas[dKey];
+    }
+  }
+
+  // --- 核心修复：从 18x256x18 的 localData 中提取 16x256x16 的核心体素返回给主线程 ---
+  if (needsGeneration) {
+    newVoxels = new Uint8Array(chunkSize * chunkHeight * chunkSize);
+    for (let y = 0; y < chunkHeight; y++) {
+      for (let z = 0; z < chunkSize; z++) {
+        for (let x = 0; x < chunkSize; x++) {
+          // 映射：localData(x+1, y, z+1) -> voxels(x, y, z)
+          const lIdx = y * pSize2 + (z + 1) * pSize + (x + 1);
+          const vIdx = y * chunkSize * chunkSize + z * chunkSize + x;
+          newVoxels[vIdx] = localData[lIdx];
+        }
+      }
     }
   }
 

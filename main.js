@@ -2,10 +2,15 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { WorldManager } from './WorldManager.js';
 import { getBiomeAt } from './VoxelWorld.js';
+import { AudioManager } from './AudioManager.js';
+
+// 初始化音效管理器
+const audioManager = new AudioManager();
+audioManager.loadSounds();
 
 // 0. 配置常量
-const skyColor = 0x87ceeb; // 天空蓝
-const renderDistance = 3;  // 渲染距离 (区块半径)
+const skyColor = 0xadd8e6; // 更亮的天空蓝
+const renderDistance = 6;  // 增加渲染距离到 6，视野更开阔
 const chunkSize = 16;      // 区块大小
 
 // --- 调试面板逻辑 (F3) ---
@@ -119,8 +124,9 @@ window.addEventListener('keydown', (e) => {
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(skyColor);
 
-const fogFar = renderDistance * chunkSize;
-const fogNear = fogFar * 0.7;
+// 推远雾气：让视野更清晰
+const fogFar = renderDistance * chunkSize * 1.2; // 约 115 单位
+const fogNear = fogFar * 0.4;
 scene.fog = new THREE.Fog(skyColor, fogNear, fogFar);
 
 // 2. 初始化透视相机
@@ -130,7 +136,9 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   1000
 );
-camera.position.set(8, 100, 8);
+// 初始设置一个较高的位置，防止在地形加载前掉落
+camera.position.set(16, 120, 16);
+camera.lookAt(16, 40, 48);
 
 // 3. 初始化 WebGL 渲染器
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -195,6 +203,7 @@ const controls = new PointerLockControls(camera, document.body);
 
 instructions.addEventListener('click', () => {
   controls.lock();
+  audioManager.init(camera);
 });
 controls.addEventListener('lock', () => {
   instructions.style.display = 'none';
@@ -268,10 +277,12 @@ document.addEventListener('mousedown', (e) => {
 
     if (e.button === 0) {
       worldManager.setBlock(voxelPos.x, voxelPos.y, voxelPos.z, 0);
+      audioManager.playSound('dig');
     } else {
       const blockType = hotbarItems[selectedSlot];
       if (blockType !== 0) {
         worldManager.setBlock(voxelPos.x, voxelPos.y, voxelPos.z, blockType);
+        audioManager.playSound('place');
       }
     }
   }
@@ -297,6 +308,7 @@ const eyeHeight = 1.6;
 const gravity = 30.0;
 const jumpSpeed = 10.0;
 let isGrounded = false;
+let lastFootstepTime = 0;
 
 function checkCollision(pos) {
   // 飞行模式下禁用碰撞检测 (Noclip)
@@ -321,6 +333,26 @@ function checkCollision(pos) {
   }
   return false;
 }
+let hasSpawned = false;
+const spawnX = 16, spawnZ = 16; 
+
+function findSafeSpawn() {
+  const currentChunkX = Math.floor(spawnX / chunkSize);
+  const currentChunkZ = Math.floor(spawnZ / chunkSize);
+  const chunk = worldManager.chunks.get(`${currentChunkX},${currentChunkZ}`);
+  
+  // 必须确保区块已经生成地形
+  if (chunk && chunk.generated) {
+    const y = worldManager.getHighestBlock(spawnX, spawnZ);
+    if (y !== null) {
+      // y 是最高实体方块的高度。玩家的脚应该放在 y + 1 的位置。
+      camera.position.set(spawnX, y + 1 + eyeHeight, spawnZ);
+      hasSpawned = true;
+      console.log(`已找到安全出生点: 实体高度 y=${y}`);
+    }
+  }
+}
+
 function animate() {
   requestAnimationFrame(animate);
 
@@ -338,6 +370,19 @@ function animate() {
   if (controls.isLocked) {
     // 动态更新世界区块
     worldManager.update(camera.position);
+
+    // 1. 安全出生点查找逻辑
+    if (!hasSpawned && !isFlying) {
+      findSafeSpawn();
+      // 在找到出生点前，强行将重力速度归零，实现“悬浮加载”
+      velocity.y = 0;
+    }
+
+    // 检查玩家当前所在区块是否已经加载并生成地形
+    const currentChunkX = Math.floor(camera.position.x / chunkSize);
+    const currentChunkZ = Math.floor(camera.position.z / chunkSize);
+    const currentChunk = worldManager.chunks.get(`${currentChunkX},${currentChunkZ}`);
+    const isReady = currentChunk && currentChunk.generated;
 
     // 更新调试面板信息
     updateDebugPanel();
@@ -360,7 +405,13 @@ function animate() {
       velocity.y -= velocity.y * friction * delta;
       if (moveState.up || moveState.down) velocity.y += direction.y * speed * delta;
     } else {
-      velocity.y -= gravity * delta;
+      // 只有当地形就绪时才应用重力
+      if (isReady) {
+        velocity.y -= gravity * delta;
+      } else {
+        velocity.y = 0; // 悬浮等待
+      }
+      
       // 普通模式跳跃逻辑
       if (moveState.up && isGrounded) {
         velocity.y = jumpSpeed;
@@ -430,6 +481,18 @@ function animate() {
     if (!isFlying && camera.position.y < -20) {
       camera.position.set(8, 100, 8);
       velocity.set(0, 0, 0);
+    }
+
+    // 脚步声逻辑
+    if (isGrounded && !isFlying) {
+      // 判断是否有显著的水平移动 (速度平方)
+      const speedSq = velocity.x * velocity.x + velocity.z * velocity.z;
+      if (speedSq > 1.0) { 
+        if (time - lastFootstepTime > 400) { // 每隔 400ms 触发一次
+          audioManager.playSound('footstep', 0.3); // 调低脚步声音量
+          lastFootstepTime = time;
+        }
+      }
     }
   }
 

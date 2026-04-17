@@ -14,3 +14,11 @@
 * **网格生成**：摒弃单独渲染每个方块，采用自定义 `BufferGeometry`。
 * **面剔除 (Face Culling)**：遍历 Chunk 数据时，只有相邻坐标为空气 (Air, ID=0) 的面，才会生成顶点 (Vertices) 和索引 (Indices) 数据。
 * **视觉风格 (当前采用方案)**：**无贴图棋盘格变色方案**。开启 `vertexColors: true`，利用方块世界坐标 `(x+y+z)` 的奇偶性，为相邻的纯色方块生成细微的明暗亮度差，以凸显方块边界感。
+
+## 4. 关键子系统架构
+* **世界生成 (World Generation)**：
+  - 基于 3D Simplex Noise 的密度地形生成。
+  - **强制安全出生点 (Safe Spawn)**：使用 Smoothstep 算法干预坐标原点的密度，强制生成没有洞穴的平坦草地，防止初始坠落虚空。
+  - **确定性伪随机 (Deterministic Generation)**：使用基于世界坐标哈希的伪随机算法替换 Math.random()，避免重建时的地形/植被漂移。
+* **音效系统 (Audio System)**：
+  - **对象池 (Object Pool)与LRU**：为高频音效（挖掘、脚步声）维护池化实例队列，保证大批量连续点击时的声音平滑叠加而不爆音卡顿。
