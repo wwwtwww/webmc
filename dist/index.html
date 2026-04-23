@@ -128,12 +128,149 @@
         display: none; /* 默认隐藏 */
         pointer-events: none;
       }
+
+      /* 背包 UI 样式 */
+      #inventory-ui {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: none; /* 默认隐藏 */
+        z-index: 500;
+        justify-content: center;
+        align-items: center;
+        color: #fff;
+      }
+
+      .inventory-window {
+        background-color: #c6c6c6;
+        border: 4px solid #373737;
+        border-right-color: #fff;
+        border-bottom-color: #fff;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        box-shadow: 10px 10px 0 rgba(0,0,0,0.3);
+      }
+
+      .inv-title {
+        color: #3f3f3f;
+        font-weight: bold;
+        margin-bottom: 4px;
+        font-size: 16px;
+      }
+
+      .inv-grid {
+        display: grid;
+        grid-template-columns: repeat(9, 52px);
+        grid-template-rows: repeat(3, 52px);
+        gap: 2px;
+      }
+
+      .inv-hotbar-row {
+        margin-top: 8px;
+        display: grid;
+        grid-template-columns: repeat(9, 52px);
+        gap: 2px;
+      }
+
+      .inv-slot {
+        width: 44px;
+        height: 44px;
+        background-color: #8b8b8b;
+        border: 4px solid #373737;
+        border-top-color: #ffffff;
+        border-left-color: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        cursor: pointer;
+      }
+
+      .inv-slot:hover {
+        background-color: #aaa;
+      }
+
+      .inv-slot .count {
+        position: absolute;
+        bottom: 2px;
+        right: 2px;
+        font-size: 14px;
+        font-weight: bold;
+        text-shadow: 2px 2px #000;
+        pointer-events: none;
+      }
+
+      /* 合成区 */
+      .crafting-container {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 24px;
+        padding-bottom: 10px;
+      }
+
+      .craft-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 52px);
+        grid-template-rows: repeat(2, 52px);
+        gap: 2px;
+      }
+
+      .craft-arrow {
+        color: #3f3f3f;
+        font-size: 32px;
+        font-weight: bold;
+      }
+
+      /* 覆盖 3D 图标缩放适应小格子 */
+      .inv-slot .cube-icon {
+        transform: rotateX(-25deg) rotateY(45deg) scale(0.8);
+        margin-bottom: 0;
+      }
     </style>
-    <script type="module" crossorigin src="/assets/index-fURNn8Ow.js"></script>
+    <script type="module" crossorigin src="/assets/index-Pc6FVbLs.js"></script>
   </head>
   <body>
     <!-- 确保 app 和 hotbar 是同级且 hotbar 在后/高 z-index -->
     <div id="app"></div>
+
+    <!-- 背包 UI -->
+    <div id="inventory-ui">
+      <div class="inventory-window">
+        <!-- 顶部合成区 -->
+        <div class="crafting-container">
+          <div>
+            <div class="inv-title">Crafting</div>
+            <div class="craft-grid" id="crafting-grid">
+              <div class="inv-slot" data-type="craft" data-index="0"></div>
+              <div class="inv-slot" data-type="craft" data-index="1"></div>
+              <div class="inv-slot" data-type="craft" data-index="2"></div>
+              <div class="inv-slot" data-type="craft" data-index="3"></div>
+            </div>
+          </div>
+          <div class="craft-arrow">→</div>
+          <div class="inv-slot" id="crafting-result" style="width: 52px; height: 52px;"></div>
+        </div>
+
+        <!-- 主背包 -->
+        <div>
+          <div class="inv-title">Inventory</div>
+          <div class="inv-grid" id="main-inventory">
+            <!-- 27 slots (index 9-35) -->
+          </div>
+        </div>
+
+        <!-- 快捷栏同步显示 -->
+        <div class="inv-hotbar-row" id="hotbar-inventory">
+          <!-- 9 slots (index 0-8) -->
+        </div>
+      </div>
+    </div>
 
     <!-- 调试面板 -->
     <div id="debug-panel">
@@ -151,6 +288,14 @@
     <!-- 挖掘进度条 -->
     <div id="mining-progress-container" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, 30px); width: 100px; height: 10px; background-color: rgba(0,0,0,0.5); border: 2px solid #fff; border-radius: 5px; z-index: 200;">
       <div id="mining-progress" style="width: 0%; height: 100%; background-color: #00ffcc; border-radius: 3px;"></div>
+    </div>
+
+    <!-- 开发者控制台 UI -->
+    <div id="console-ui" style="display: none; position: fixed; bottom: 0; left: 0; width: 100%; background-color: rgba(0, 0, 0, 0.7); padding: 10px; z-index: 2000; box-sizing: border-box;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="color: #00ffcc; font-family: monospace; font-weight: bold;">></span>
+        <input id="console-input" type="text" style="flex-grow: 1; background: transparent; border: none; outline: none; color: #fff; font-family: monospace; font-size: 16px;" placeholder="输入指令... (例如 /time 0.5)" autocomplete="off" />
+      </div>
     </div>
 
   </body>
