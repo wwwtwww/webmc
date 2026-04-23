@@ -29,5 +29,15 @@
     1. 挖掘前校验 `addItem`。若失败则拦截破坏流程。
     2. 关闭背包时校验 `addItem`。若失败则通过 `controls.unlock()` 强制拦截 UI 关闭，防止手持物品直接消失。
 
-## 7. 存储：未加载区块修改丢失
-*   **修复**：重构 `WorldManager.setBlock`，将数据库持久化逻辑 (`saveChunkDelta`) 移出 `if (chunk)` 判断，实现全域持久化。
+## 7. 存储：持久化失效与 Forced Air 丢失
+*   **症状**：修改了视距外的方块没有保存；或者在地形生成前挖掉的方块重载后又恢复了。
+*   **修复**：
+    1.  **全域持久化**：重构 `WorldManager.setBlock`，将 `saveChunkDelta` 移出 `if (chunk)` 判断，确保非内存区块修改也能写入 IndexedDB。
+    2.  **强制空气持久化**：在持久化时使用计算后的 `finalType`（包含 ID 255），确保“预挖”标记能够跨会话生效。
+
+## 8. 世界生成：地形非确定性漂移
+*   **原因**：`simplex-noise` 未固定种子。
+*   **修复**：引入 `alea` 确定性随机生成器并同步给主线程与 Worker。
+
+## 9. 交互：无限手长
+*   **修复**：在射线检测中增加 `if (intersect.distance > MAX_REACH) return;` 限制（默认 5 格）。

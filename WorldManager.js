@@ -109,29 +109,31 @@ export class WorldManager {
     const val = chunk.world.getBlock(Math.floor(worldX - chunkX * this.chunkSize), Math.floor(worldY), Math.floor(worldZ - chunkZ * this.chunkSize));
     return val === 255 ? 0 : val;
   }
-setBlock(worldX, worldY, worldZ, type) {
-  const chunkX = Math.floor(worldX / this.chunkSize), chunkZ = Math.floor(worldZ / this.chunkSize);
-  const key = `${chunkX},${chunkZ}`;
-  const chunk = this.chunks.get(key);
-  
-  const lx = Math.floor(worldX - chunkX * this.chunkSize);
-  const ly = Math.floor(worldY);
-  const lz = Math.floor(worldZ - chunkZ * this.chunkSize);
+  setBlock(worldX, worldY, worldZ, type) {
+    const chunkX = Math.floor(worldX / this.chunkSize), chunkZ = Math.floor(worldZ / this.chunkSize);
+    const key = `${chunkX},${chunkZ}`;
+    const chunk = this.chunks.get(key);
+    
+    const lx = Math.floor(worldX - chunkX * this.chunkSize);
+    const ly = Math.floor(worldY);
+    const lz = Math.floor(worldZ - chunkZ * this.chunkSize);
 
-  if (chunk) {
-    const finalType = (type === 0 && !chunk.generated) ? 255 : type;
-    chunk.world.setBlock(lx, ly, lz, finalType);
+    // 确定最终存储的 ID。如果挖掘尚未生成的区块，使用 ID 255 (Forced Air)
+    const finalType = (type === 0 && chunk && !chunk.generated) ? 255 : type;
 
-    this.markDirty(chunkX, chunkZ);
-    if (lx === 0) this.markDirty(chunkX - 1, chunkZ);
-    if (lx === this.chunkSize - 1) this.markDirty(chunkX + 1, chunkZ);
-    if (lz === 0) this.markDirty(chunkX, chunkZ - 1);
-    if (lz === this.chunkSize - 1) this.markDirty(chunkX, chunkZ + 1);
+    if (chunk) {
+      chunk.world.setBlock(lx, ly, lz, finalType);
+
+      this.markDirty(chunkX, chunkZ);
+      if (lx === 0) this.markDirty(chunkX - 1, chunkZ);
+      if (lx === this.chunkSize - 1) this.markDirty(chunkX + 1, chunkZ);
+      if (lz === 0) this.markDirty(chunkX, chunkZ - 1);
+      if (lz === this.chunkSize - 1) this.markDirty(chunkX, chunkZ + 1);
+    }
+
+    // 始终异步持久化增量修改，确保非内存区块也能保存
+    saveChunkDelta(key, lx, ly, lz, finalType).catch(err => console.error("Save failed:", err));
   }
-
-  // 始终异步持久化增量修改，即使区块未加载
-  saveChunkDelta(key, lx, ly, lz, type).catch(err => console.error("Save failed:", err));
-}
   markDirty(chunkX, chunkZ) { this.dirtyChunks.add(`${chunkX},${chunkZ}`); }
 
   getHighestBlock(worldX, worldZ) {
