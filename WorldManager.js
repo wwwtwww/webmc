@@ -118,8 +118,10 @@ export class WorldManager {
     const ly = Math.floor(worldY);
     const lz = Math.floor(worldZ - chunkZ * this.chunkSize);
 
-    // 确定最终存储的 ID。如果挖掘尚未生成的区块，使用 ID 255 (Forced Air)
-    const finalType = (type === 0 && chunk && !chunk.generated) ? 255 : type;
+    // 确定最终存储的 ID。如果是在尚未生成的区域挖掘（type=0），使用 ID 255 (Forced Air)
+    // 即使 chunk 实例不存在，我们也根据其是否在 this.chunks 中以及 generated 状态判定
+    const isGenerated = chunk ? chunk.generated : false; 
+    const finalType = (type === 0 && !isGenerated) ? 255 : type;
 
     if (chunk) {
       chunk.world.setBlock(lx, ly, lz, finalType);
@@ -131,9 +133,9 @@ export class WorldManager {
       if (lz === this.chunkSize - 1) this.markDirty(chunkX, chunkZ + 1);
     }
 
-    // 始终异步持久化增量修改，确保非内存区块也能保存
+    // 始终异步持久化增量修改，确保非内存区块也能保存。使用 finalType 确保 Forced Air 标记不丢失。
     saveChunkDelta(key, lx, ly, lz, finalType).catch(err => console.error("Save failed:", err));
-  }
+    }
   markDirty(chunkX, chunkZ) { this.dirtyChunks.add(`${chunkX},${chunkZ}`); }
 
   getHighestBlock(worldX, worldZ) {

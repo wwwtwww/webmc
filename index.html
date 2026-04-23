@@ -290,10 +290,11 @@
     </div>
 
     <!-- 开发者控制台 UI -->
-    <div id="console-ui" style="display: none; position: fixed; bottom: 0; left: 0; width: 100%; background-color: rgba(0, 0, 0, 0.7); padding: 10px; z-index: 2000; box-sizing: border-box;">
+    <div id="console-ui" style="display: none; position: fixed; bottom: 0; left: 0; width: 100%; background-color: rgba(0, 0, 0, 0.8); padding: 10px; z-index: 2000; box-sizing: border-box; font-family: monospace;">
+      <div id="console-log" style="max-height: 150px; overflow-y: auto; color: #aaa; margin-bottom: 8px; font-size: 14px; display: flex; flex-direction: column; gap: 2px;"></div>
       <div style="display: flex; align-items: center; gap: 10px;">
-        <span style="color: #00ffcc; font-family: monospace; font-weight: bold;">></span>
-        <input id="console-input" type="text" style="flex-grow: 1; background: transparent; border: none; outline: none; color: #fff; font-family: monospace; font-size: 16px;" placeholder="输入指令... (例如 /time 0.5)" autocomplete="off" />
+        <span style="color: #00ffcc; font-weight: bold;">></span>
+        <input id="console-input" type="text" style="flex-grow: 1; background: transparent; border: none; outline: none; color: #fff; font-size: 16px;" placeholder="输入指令... (例如 /time 12)" autocomplete="off" />
       </div>
     </div>
 

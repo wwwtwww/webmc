@@ -49,10 +49,25 @@ let isConsoleOpen = false;
 let isOpeningConsole = false; 
 const consoleUI = document.getElementById('console-ui');
 const consoleInput = document.getElementById('console-input');
+const consoleLog = document.getElementById('console-log');
+
+function addConsoleMsg(text, color = '#fff') {
+  if (!consoleLog) return;
+  const msg = document.createElement('div');
+  msg.innerText = text;
+  msg.style.color = color;
+  consoleLog.appendChild(msg);
+  // 保持滚动到底部
+  consoleLog.scrollTop = consoleLog.scrollHeight;
+  // 限制消息条数
+  while (consoleLog.children.length > 50) {
+    consoleLog.removeChild(consoleLog.firstChild);
+  }
+}
 
 function toggleConsole() {
   if (!hasSpawned) return;
-  
+
   if (isConsoleOpen) {
     controls.lock(); 
   } else {
@@ -65,15 +80,15 @@ consoleInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     const input = consoleInput.value;
     if (input && commandParser) {
+      addConsoleMsg(`> ${input}`, '#00ffcc');
       const response = commandParser.parse(input);
-      console.log(`[Console] ${response}`);
+      addConsoleMsg(response);
     }
     toggleConsole();
   } else if (e.key === 'Escape') {
     toggleConsole();
   }
 });
-
 // 初始赠送少量原木用于测试合成
 inventoryManager.addItem(4, 16); 
 

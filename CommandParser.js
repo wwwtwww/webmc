@@ -41,10 +41,20 @@ export class CommandParser {
   }
 
   handleTime(args) {
-    const t = parseFloat(args[0]);
-    if (isNaN(t) || t < 0 || t > 24) return '用法: /time [0.0 ~ 24.0]';
+    let t = parseFloat(args[0]);
+    if (isNaN(t)) return '用法: /time [0.0 ~ 24.0]';
+    
+    // 自动环绕：例如输入 25 变为 1.0，输入 -1 变为 23.0
+    t = ((t % 24) + 24) % 24;
+    
     this.ctx.skyManager.setTime(t);
-    return `时间已设置为 ${t}:00`;
+    
+    // 格式化输出为 HH:MM
+    const hours = Math.floor(t);
+    const minutes = Math.floor((t - hours) * 60);
+    const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+    
+    return `时间已设置为 ${timeStr}`;
   }
 
   handleGive(args) {
