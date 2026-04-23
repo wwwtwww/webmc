@@ -113,11 +113,12 @@ setBlock(worldX, worldY, worldZ, type) {
   const chunkX = Math.floor(worldX / this.chunkSize), chunkZ = Math.floor(worldZ / this.chunkSize);
   const key = `${chunkX},${chunkZ}`;
   const chunk = this.chunks.get(key);
-  if (chunk) {
-    const lx = Math.floor(worldX - chunkX * this.chunkSize);
-    const ly = Math.floor(worldY);
-    const lz = Math.floor(worldZ - chunkZ * this.chunkSize);
+  
+  const lx = Math.floor(worldX - chunkX * this.chunkSize);
+  const ly = Math.floor(worldY);
+  const lz = Math.floor(worldZ - chunkZ * this.chunkSize);
 
+  if (chunk) {
     const finalType = (type === 0 && !chunk.generated) ? 255 : type;
     chunk.world.setBlock(lx, ly, lz, finalType);
 
@@ -126,10 +127,10 @@ setBlock(worldX, worldY, worldZ, type) {
     if (lx === this.chunkSize - 1) this.markDirty(chunkX + 1, chunkZ);
     if (lz === 0) this.markDirty(chunkX, chunkZ - 1);
     if (lz === this.chunkSize - 1) this.markDirty(chunkX, chunkZ + 1);
-
-    // 异步持久化增量修改
-    saveChunkDelta(key, lx, ly, lz, finalType).catch(err => console.error("Save failed:", err));
   }
+
+  // 始终异步持久化增量修改，即使区块未加载
+  saveChunkDelta(key, lx, ly, lz, type).catch(err => console.error("Save failed:", err));
 }
   markDirty(chunkX, chunkZ) { this.dirtyChunks.add(`${chunkX},${chunkZ}`); }
 
@@ -149,7 +150,7 @@ setBlock(worldX, worldY, worldZ, type) {
         return y;
       }
     }
-    return 0;
+    return null;
   }
 
   async _buildMesh(chunkX, chunkZ) {

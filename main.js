@@ -3,6 +3,9 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 import { WorldManager } from './WorldManager.js';
 import { getBiomeAt } from './VoxelWorld.js';
 import { AudioManager } from './AudioManager.js';
+import { InventoryManager } from './InventoryManager.js';
+import { InventoryUI } from './InventoryUI.js';
+import { CraftingManager } from './CraftingManager.js';
 
 // 初始化音效管理器
 const audioManager = new AudioManager();
@@ -12,6 +15,117 @@ audioManager.loadSounds();
 const skyColor = 0xadd8e6; // 更亮的天空蓝
 const renderDistance = 6;  // 增加渲染距离到 6，视野更开阔
 const chunkSize = 16;      // 区块大小
+
+// --- 数据定义 ---
+const blockData = {
+  1: { name: '草地', color: '#3dad3d' },
+  2: { name: '泥土', color: '#7d542a' },
+  3: { name: '水源', color: '#1a66e6' },
+  4: { name: '木头', color: '#663300' },
+  5: { name: '树叶', color: '#1a801a' },
+  6: { name: '沙子', color: '#e6cc80' },
+  7: { name: '积雪', color: '#f2f2ff' },
+  8: { name: '玻璃', color: '#aaddff' },
+  9: { name: '木板', color: '#a67d3d' },
+  10: { name: '木棍', color: '#7d5e2a' },
+  11: { name: '工作台', color: '#d9a066' }
+};
+
+// --- 背包与合成系统初始化 ---
+const inventoryManager = new InventoryManager();
+const craftingManager = new CraftingManager();
+const inventoryUI = new InventoryUI(blockData, craftingManager);
+let isInventoryOpen = false;
+let isOpeningInventory = false; // 用于区分是 E 键打开还是 ESC 退出
+
+// 初始赠送少量原木用于测试合成
+inventoryManager.addItem(4, 16); 
+
+/**
+ * 核心交互逻辑：处理背包/合成位点击
+ */
+inventoryUI.onSlotClick = (index, type) => {
+  const targetArray = (type === 'inventory') ? inventoryManager.slots : inventoryUI.craftingSlots;
+  
+  if (type === 'result') {
+    handleResultClick();
+    return;
+  }
+
+  const clickedItem = targetArray[index];
+  const holdingItem = inventoryUI.holdingItem;
+
+  if (!holdingItem && clickedItem) {
+    // 1. 拿起 (Pick Up)
+    inventoryUI.holdingItem = { ...clickedItem };
+    targetArray[index] = null;
+  } else if (holdingItem && !clickedItem) {
+    // 2. 放下 (Place)
+    targetArray[index] = { ...holdingItem };
+    inventoryUI.holdingItem = null;
+  } else if (holdingItem && clickedItem) {
+    if (holdingItem.id === clickedItem.id) {
+      // 3. 堆叠 (Stack)
+      const canAdd = 64 - clickedItem.count;
+      const toAdd = Math.min(canAdd, holdingItem.count);
+      clickedItem.count += toAdd;
+      holdingItem.count -= toAdd;
+      if (holdingItem.count <= 0) inventoryUI.holdingItem = null;
+    } else {
+      // 4. 交换 (Swap)
+      const temp = { ...clickedItem };
+      targetArray[index] = { ...holdingItem };
+      inventoryUI.holdingItem = temp;
+    }
+  }
+
+  // 合成联动：如果操作了合成区，更新预览
+  if (type === 'craft') {
+    inventoryUI.updateCrafting();
+  }
+
+  // 刷新 UI
+  inventoryUI.render(inventoryManager);
+  inventoryUI.updateDragCursor();
+  initHotbarUI(); // 同步更新 3D 快捷栏
+};
+
+function handleResultClick() {
+  if (!inventoryUI.craftingResult) return;
+  const result = inventoryUI.craftingResult;
+  const holding = inventoryUI.holdingItem;
+
+  if (!holding || (holding.id === result.id && holding.count + result.count <= 64)) {
+    if (!holding) {
+      inventoryUI.holdingItem = { ...result };
+    } else {
+      inventoryUI.holdingItem.count += result.count;
+    }
+
+    for (let i = 0; i < 4; i++) {
+      if (inventoryUI.craftingSlots[i]) {
+        inventoryUI.craftingSlots[i].count--;
+        if (inventoryUI.craftingSlots[i].count <= 0) inventoryUI.craftingSlots[i] = null;
+      }
+    }
+
+    inventoryUI.updateCrafting();
+    inventoryUI.render(inventoryManager);
+    inventoryUI.updateDragCursor();
+    initHotbarUI();
+  }
+}
+
+function toggleInventory() {
+  if (!hasSpawned) return;
+
+  if (isInventoryOpen) {
+    controls.lock(); // 关闭
+  } else {
+    isOpeningInventory = true;
+    controls.unlock(); // 尝试打开
+  }
+}
 
 // --- 调试面板逻辑 (F3) ---
 let showDebug = false;
@@ -53,17 +167,6 @@ window.addEventListener('keydown', (e) => {
 // -----------------------
 
 // --- 快捷栏逻辑 (优先初始化以确保可见) ---
-const blockData = {
-  1: { name: '草地', color: '#3dad3d' },
-  2: { name: '泥土', color: '#7d542a' },
-  3: { name: '水源', color: '#1a66e6' },
-  4: { name: '木头', color: '#663300' },
-  5: { name: '树叶', color: '#1a801a' },
-  6: { name: '沙子', color: '#e6cc80' },
-  7: { name: '积雪', color: '#f2f2ff' },
-  8: { name: '玻璃', color: '#aaddff' }
-};
-
 const hotbarItems = [1, 2, 4, 5, 3, 6, 7, 8, 0]; 
 let selectedSlot = 0;
 
@@ -207,9 +310,36 @@ instructions.addEventListener('click', () => {
 });
 controls.addEventListener('lock', () => {
   instructions.style.display = 'none';
+  // 如果当前是开启状态，则尝试关闭
+  if (isInventoryOpen) {
+    // 尝试回收手持物品
+    if (inventoryUI.holdingItem) {
+      const added = inventoryManager.addItem(inventoryUI.holdingItem.id, inventoryUI.holdingItem.count);
+      if (!added) {
+        // 如果背包满了，强制保持背包开启状态，防止物品丢失
+        controls.unlock(); 
+        console.warn("背包已满，请先处理手持物品！");
+        return;
+      }
+      inventoryUI.holdingItem = null;
+      inventoryUI.updateDragCursor();
+    }
+    isInventoryOpen = false;
+    inventoryUI.uiContainer.style.display = 'none';
+    initHotbarUI();
+  }
 });
 controls.addEventListener('unlock', () => {
-  instructions.style.display = 'block';
+  // 如果是因为按 E 打开背包，则不显示初始菜单
+  if (isOpeningInventory) {
+    isInventoryOpen = true;
+    isOpeningInventory = false;
+    inventoryUI.uiContainer.style.display = 'flex';
+    inventoryUI.render(inventoryManager);
+  } else {
+    // 真正的 ESC 退出，显示主菜单
+    instructions.style.display = 'block';
+  }
 });
 scene.add(controls.getObject());
 
@@ -239,6 +369,11 @@ document.addEventListener('keydown', (e) => {
         velocity.set(0, 0, 0); // 切换模式时重置速度
       }
       break;
+    case 'KeyE':
+    case 'Tab':
+      e.preventDefault(); // 防止 Tab 键切换浏览器焦点
+      toggleInventory();
+      break;
   }
 });
 document.addEventListener('keyup', (e) => {
@@ -255,6 +390,14 @@ document.addEventListener('keyup', (e) => {
 // 8. 射线检测 (挖掘与放置)
 const raycaster = new THREE.Raycaster();
 const center = new THREE.Vector2(0, 0);
+const MAX_REACH = 5;
+
+let isMining = false;
+let miningProgress = 0;
+let targetBlock = null;
+
+const miningProgressContainer = document.getElementById('mining-progress-container');
+const miningProgressBar = document.getElementById('mining-progress');
 
 document.addEventListener('mousedown', (e) => {
   if (!controls.isLocked) return;
@@ -266,6 +409,8 @@ document.addEventListener('mousedown', (e) => {
 
   if (intersects.length > 0) {
     const intersect = intersects[0];
+    if (intersect.distance > MAX_REACH) return; // 距离检测：超过 5 格则忽略
+
     const normal = intersect.face.normal.clone();
     
     let voxelPos;
@@ -276,8 +421,16 @@ document.addEventListener('mousedown', (e) => {
     }
 
     if (e.button === 0) {
-      worldManager.setBlock(voxelPos.x, voxelPos.y, voxelPos.z, 0);
-      audioManager.playSound('dig');
+      // 开始挖掘逻辑
+      isMining = true;
+      miningProgress = 0;
+      targetBlock = {
+        x: Math.floor(voxelPos.x),
+        y: Math.floor(voxelPos.y),
+        z: Math.floor(voxelPos.z)
+      };
+      if (miningProgressContainer) miningProgressContainer.style.display = 'block';
+      if (miningProgressBar) miningProgressBar.style.width = '0%';
     } else {
       const blockType = hotbarItems[selectedSlot];
       if (blockType !== 0) {
@@ -285,6 +438,15 @@ document.addEventListener('mousedown', (e) => {
         audioManager.playSound('place');
       }
     }
+  }
+});
+
+document.addEventListener('mouseup', (e) => {
+  if (e.button === 0) {
+    isMining = false;
+    miningProgress = 0;
+    targetBlock = null;
+    if (miningProgressContainer) miningProgressContainer.style.display = 'none';
   }
 });
 
@@ -370,6 +532,69 @@ function animate() {
   if (controls.isLocked) {
     // 动态更新世界区块
     worldManager.update(camera.position);
+
+    // 持续挖掘逻辑
+    if (isMining && targetBlock) {
+      raycaster.setFromCamera(center, camera);
+      const chunkMeshes = Array.from(worldManager.chunks.values()).flatMap(c => [c.opaqueMesh, c.transparentMesh]);
+      const intersects = raycaster.intersectObjects(chunkMeshes);
+      
+      let hitSameBlock = false;
+      if (intersects.length > 0) {
+        const intersect = intersects[0];
+        if (intersect.distance <= MAX_REACH) {
+          const normal = intersect.face.normal.clone();
+          const voxelPos = intersect.point.clone().sub(normal.multiplyScalar(0.5));
+          const cx = Math.floor(voxelPos.x);
+          const cy = Math.floor(voxelPos.y);
+          const cz = Math.floor(voxelPos.z);
+
+          if (cx === targetBlock.x && cy === targetBlock.y && cz === targetBlock.z) {
+            hitSameBlock = true;
+          }
+        }
+      }
+
+      if (hitSameBlock) {
+        // 增加进度：空手每秒 0.25 (4秒挖完)
+        miningProgress += delta * 0.25;
+        if (miningProgressBar) {
+          miningProgressBar.style.width = `${Math.min(miningProgress * 100, 100)}%`;
+        }
+
+        if (miningProgress >= 1.0) {
+          // 获取当前挖掘方块的类型，用于存入背包
+          const blockId = worldManager.getBlock(targetBlock.x, targetBlock.y, targetBlock.z);
+          if (blockId !== 0) {
+            const added = inventoryManager.addItem(blockId, 1);
+            if (!added) {
+              console.warn("背包已满，无法挖掘该方块！");
+              // 如果背包满了，停止挖掘且不破坏方块
+              isMining = false;
+              miningProgress = 0;
+              targetBlock = null;
+              if (miningProgressContainer) miningProgressContainer.style.display = 'none';
+              return;
+            }
+            inventoryUI.render(inventoryManager);
+            initHotbarUI(); // 同步更新 3D 快捷栏
+          }
+
+          worldManager.setBlock(targetBlock.x, targetBlock.y, targetBlock.z, 0);
+          audioManager.playSound('dig');
+          
+          // 重置状态
+          isMining = false;
+          miningProgress = 0;
+          targetBlock = null;
+          if (miningProgressContainer) miningProgressContainer.style.display = 'none';
+        }
+      } else {
+        // 如果玩家转头或超出距离，重置进度
+        miningProgress = 0;
+        if (miningProgressBar) miningProgressBar.style.width = '0%';
+      }
+    }
 
     // 1. 安全出生点查找逻辑
     if (!hasSpawned && !isFlying) {

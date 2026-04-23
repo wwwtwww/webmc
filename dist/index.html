@@ -129,7 +129,7 @@
         pointer-events: none;
       }
     </style>
-    <script type="module" crossorigin src="/assets/index-CbiQFkSq.js"></script>
+    <script type="module" crossorigin src="/assets/index-fURNn8Ow.js"></script>
   </head>
   <body>
     <!-- 确保 app 和 hotbar 是同级且 hotbar 在后/高 z-index -->
@@ -146,6 +146,11 @@
     
     <div id="hotbar">
       <!-- JS 动态生成内容 -->
+    </div>
+
+    <!-- 挖掘进度条 -->
+    <div id="mining-progress-container" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, 30px); width: 100px; height: 10px; background-color: rgba(0,0,0,0.5); border: 2px solid #fff; border-radius: 5px; z-index: 200;">
+      <div id="mining-progress" style="width: 0%; height: 100%; background-color: #00ffcc; border-radius: 3px;"></div>
     </div>
 
   </body>

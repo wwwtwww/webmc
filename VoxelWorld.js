@@ -1,8 +1,16 @@
 import * as THREE from 'three';
 import { createNoise2D } from 'simplex-noise';
 
-// 使用固定种子确保主线程与 Worker 逻辑一致（如果未来 Worker 也用 biomeNoise）
-const biomeNoise = createNoise2D(() => 0.8);
+// 使用固定种子确保主线程与 Worker 逻辑一致
+const seed = 12345;
+function alea(seed) {
+  let s = seed;
+  return () => {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+}
+const biomeNoise = createNoise2D(alea(seed + 1));
 
 /**
  * 核心体素数据模型
@@ -44,7 +52,7 @@ export class VoxelWorld {
  * 外部查询工具：根据全局世界坐标返回真实的群落名称
  */
 export function getBiomeAt(worldX, worldZ) {
-  const biomeScale = 0.01;
+  const biomeScale = 0.005;
   const bNoise = biomeNoise(worldX * biomeScale, worldZ * biomeScale);
   
   if (bNoise < -0.4) return 'SNOWY (积雪高山)';

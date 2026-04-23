@@ -5,24 +5,37 @@
 ## 1. WorldManager (世界管理器)
 负责区块的生命周期管理、视距调度以及主线程与 Worker 间的通信。
 
-- `update(playerPos: THREE.Vector3)`: 每一帧调用。根据玩家位置加载/卸载区块，并处理脏区块的重建。卸载时会触发邻居区块重绘以修复边界。
-- `setBlock(worldX, worldY, worldZ, type)`: 修改方块。如果在地形生成完成前挖掘（type=0），会设为 **ID 255 (Forced Air)** 以防止被生成算法覆盖。
+- `update(playerPos: THREE.Vector3)`: 每一帧调用。根据玩家位置加载/卸载区块。
+- `setBlock(worldX, worldY, worldZ, type)`: 修改方块。**即使区块未加载也会同步保存至数据库**。如果在地形生成完成前挖掘（type=0），会设为 **ID 255 (Forced Air)**。
 - `getBlock(worldX, worldY, worldZ)`: 查询方块 ID。内部会自动将 255 映射回 0（空气）。
+- `getHighestBlock(x, z)`: 返回该坐标下的最高地表方块高度。若列中无方块，返回 **`null`** 以区分 Y=0 状态。
 
-## 2. Chunk (区块)
+## 2. InventoryManager (背包管理器)
+纯数据驱动的物品管理系统。
+
+- `addItem(id, amount)`: 自动寻找同类槽位堆叠（上限 64），溢出后寻找空位。返回是否添加成功。
+- `removeItem(index, amount)`: 扣除指定槽位的物品。
+- `swapSlots(idx1, idx2)`: 交换两个槽位的数据。
+
+## 3. CraftingManager (合成管理器)
+配方匹配逻辑引擎。
+
+- `checkRecipe(grid2x2)`: 输入 2x2 的二维数组。返回匹配成功的 `result` 对象 `{id, count}` 或 `null`。
+
+## 4. Chunk (区块)
 代表 16x256x16 的空间单元。
 
 - `generated`: 布尔值。标记该区块是否已完成初始地形生成。
 - `lastRequestId`: 存储本实例发出的最后一个异步请求 ID，用于校验 Worker 返回消息的时效性。
 
-## 3. VoxelWorld (体素数据模型)
+## 5. VoxelWorld (体素数据模型)
 纯数据容器。方块 ID 采用 Uint8Array 存储。
 
 - **特殊 ID**:
     - `0`: 空气。
     - `255`: 强制空气（玩家在生成前预挖的标记）。
 
-## 4. chunkWorker.js (计算核心)
+## 6. chunkWorker.js (计算核心)
 运行在独立线程中的地形生成与网格化引擎。支持 3D 噪声采样与三线性插值。
 
 ### 输入消息格式:
@@ -39,20 +52,15 @@
 ### 输出消息格式:
 ```javascript
 {
-  opaque: { positions, normals, uvs, colors, indices },
+  opaque: { positions, normals, uvs, indices },
   transparent: { ... },
   voxels: Uint8Array | null, 
   chunkX, chunkZ, version
 }
 ```
 
-## 5. 协作流程
-1. **生成与合并**: 当 `needsGeneration` 为 true 时，Worker 生成地形数据。
-2. **非零保护合并**: 主线程接收到 `voxels` 后，遍历数据：仅当 `chunk.world.data[i] === 0` 时才写入。如果该位置已是玩家修改的值（含 255），则保持现状。
-3. **时效校验**: 只有当返回消息的 `version === chunk.lastRequestId` 时，几何体才会被应用。这彻底解决了旧区块卸载后的消息冲突。
-
-## 6. AudioManager (音效管理器)
+## 7. AudioManager (音效管理器)
 基于 THREE.AudioListener 和 THREE.Audio 的音频多轨道池化管理系统。
 
-- `loadSounds()`: 异步预加载所有必须的 `.ogg` 音效文件并分配至对象池。
-- `playSound(name, volume)`: 支持打断最旧的音频以重叠播放（LRU轮转），内部带有微小音高偏移 (Detune) 增强沉浸感。
+- `loadSounds()`: 异步预加载所有必须的 `.ogg` 音效文件。
+- `playSound(name, volume)`: 支持 LRU 轮转与动态音调偏移。

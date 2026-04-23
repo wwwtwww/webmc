@@ -1,8 +1,18 @@
 // chunkWorker.js - 集成三维群落噪声、程序化植被、AO 与 双通道网格生成
 import { createNoise3D, createNoise2D } from 'simplex-noise';
 
-const noise3D = createNoise3D();
-const biomeNoise = createNoise2D(() => 0.8);
+// 使用固定种子确保世界生成的确定性
+const seed = 12345;
+function alea(seed) {
+  let s = seed;
+  return () => {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+}
+
+const noise3D = createNoise3D(alea(seed));
+const biomeNoise = createNoise2D(alea(seed + 1));
 
 // --- 常量配置 ---
 const STEP = 4;
