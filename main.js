@@ -455,9 +455,12 @@ function findSafeSpawn() {
 function animate() {
   requestAnimationFrame(animate);
   const time = performance.now(), delta = Math.min((time - prevTime) / 1000, 0.1);
+  
+  // 始终更新世界加载与环境光影，无论是否锁定鼠标
+  worldManager.update(camera.position);
+  if (skyManager) skyManager.update(delta);
+
   if (controls.isLocked) {
-    worldManager.update(camera.position);
-    if (skyManager) skyManager.update();
     if (isMining && targetBlock) {
       raycaster.setFromCamera(center, camera);
       const chunkMeshes = Array.from(worldManager.chunks.values()).flatMap(c => [c.opaqueMesh, c.transparentMesh]);

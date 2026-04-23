@@ -42,9 +42,9 @@ export class CommandParser {
 
   handleTime(args) {
     const t = parseFloat(args[0]);
-    if (isNaN(t) || t < 0 || t > 1) return '用法: /time [0.0 ~ 1.0]';
+    if (isNaN(t) || t < 0 || t > 24) return '用法: /time [0.0 ~ 24.0]';
     this.ctx.skyManager.setTime(t);
-    return `时间已设置为 ${t}`;
+    return `时间已设置为 ${t}:00`;
   }
 
   handleGive(args) {
