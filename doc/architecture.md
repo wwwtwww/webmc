@@ -20,21 +20,19 @@
 4. **校验机制**：使用全局单调递增的 `version` ID，主线程仅接受版本号匹配的数据，彻底消除异步闪烁。
 
 ## 4. 关键子系统架构
+* **生物系统 (Mob System)**：
+  - **解耦管理**：`MobManager` 负责生物的动态生成、卸载（距离超过 64 格）及逐帧更新。
+  - **简单 AI**：基于有限状态机 (FSM) 的随机漫游逻辑，包含物理模拟（重力）与基础环境感知（自动跳跃避障）。
 * **天空与环境系统 (SkyManager)**：
   - **解耦驱动**：场景的 `background`、`fog` 以及 `DirectionalLight` 的颜色和位置均由 `SkyManager` 统一管理。
-  - **24 小时制模型**：提供 `setTime(0.0 ~ 24.0)` 接口，将抽象时间映射为具体的视觉氛围（黎明、正午、黄昏、深夜）。内置 `dayDuration` 控制自动昼夜循环速度。
+  - **24 小时制模型**：支持自动昼夜循环。
 * **开发者控制台 (CommandParser)**：
-  - **指令路由**：通过简单的字符串解析支持快捷调试，可直接操作 `SkyManager`、`InventoryManager` 和 `Camera`。
+  - **指令路由**：通过简单的字符串解析支持快捷调试。
 * **背包与合成系统**：
-  - **InventoryManager**：纯数据驱动的 36 槽位容器。负责处理物品堆叠、交换与拿起/放下逻辑。
-  - **InventoryUI**：基于 CSS Grid 的 UI 层，通过 `onSlotClick` 钩子与主逻辑接线。
-* **交互系统**：
-  - **状态机挖掘**：基于 `requestAnimationFrame` 实现逐帧准星对齐检测。增加 5 格最大触及距离限制。
-  - **指针接管逻辑**：引入 `isOpeningInventory` 与 `isOpeningConsole` 标记位，解决 Pointer Lock `unlock` 事件导致的 UI 显隐逻辑死循环。
+  - **InventoryManager**：纯数据驱动的 36 槽位容器。
+  - **InventoryUI**：基于 CSS Grid 的 UI 层，实现“点击拿起/放下”的交互逻辑。
 * **物理引擎 (Physics Engine)**：
   - **混合模式**：支持 Noclip 飞行与基于 AABB 的地表碰撞。
-  - **重力状态机**：通过 `isReady` 标志位确保只有在玩家脚下地形加载完成后才启用重力。
 * **世界生成 (World Generation)**：
   - **3D Simplex Noise**：支持悬崖、洞穴与复杂的垂直结构。
-  - **确定性哈希**：引入固定种子的 `alea` 随机数发生器，确保世界生成的稳定性。
-  - **Smoothstep 平滑出生区**：在原点周围 30 格强制生成平原，并通过 S 曲线算法实现自然过渡。
+  - **确定性哈希**：引入固定种子的 `alea` 随机数发生器。

@@ -8,6 +8,7 @@ import { InventoryUI } from './InventoryUI.js';
 import { CraftingManager } from './CraftingManager.js';
 import { SkyManager } from './SkyManager.js';
 import { CommandParser } from './CommandParser.js';
+import { MobManager } from './MobManager.js';
 
 // 初始化音效管理器
 const audioManager = new AudioManager();
@@ -337,6 +338,9 @@ commandParser = new CommandParser({
 const worldManager = new WorldManager(scene, renderDistance, chunkSize);
 worldManager.update(camera.position);
 
+// 初始化生物管理器
+const mobManager = new MobManager(scene, worldManager);
+
 // 6. 第一人称控制
 const controls = new PointerLockControls(camera, document.body);
 instructions.addEventListener('click', () => { controls.lock(); audioManager.init(camera); });
@@ -474,6 +478,7 @@ function animate() {
   // 始终更新世界加载与环境光影，无论是否锁定鼠标
   worldManager.update(camera.position);
   if (skyManager) skyManager.update(delta);
+  if (mobManager) mobManager.update(delta, camera.position);
 
   if (controls.isLocked) {
     if (isMining && targetBlock) {
