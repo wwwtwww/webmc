@@ -37,7 +37,8 @@
 *   **症状**：`/give` 指令可以给予负数或零，导致背包数据异常。
 *   **修复**：在 `CommandParser.js` 中增加了正数校验，并会根据 `addItem` 的布尔返回值给玩家提供准确的反馈。
 
-## 10. 初始化：ReferenceError (Black Screen)
-*   **症状**：控制台报错 `ReferenceError: Cannot access 'xxx' before initialization`，游戏黑屏。
-*   **原因**：在 `main.js` 中，一些变量（如 `scene` 或 `hasSpawned`）在定义之前就被构造函数或逻辑代码引用。JavaScript 的 `let` 和 `const` 存在暂时性死区 (TDZ)。
-*   **修复**：严格梳理初始化顺序，确保基础场景对象（scene, camera）和物理状态常量定义在所有逻辑引用（如 `ItemDropManager` 的实例化）之前。
+## 11. 掉落物：磁力吸附无法拾取 (Logic Deadlock)
+*   **症状**：掉落物会飞向玩家，但在玩家腰部反复横跳/抖动，无法进入背包。
+*   **原因**：吸附的目标点（玩家中心/腰部）与距离判定点（玩家眼睛/相机）不一致。当物品飞到腰部时，距离眼睛的距离始终约为 1.0，无法满足 `< 0.5` 的拾取条件。
+*   **修复**：在 `ItemDropManager.js` 中统一计算 `playerCenter` (相机位置向下偏移)，将吸附目标点与距离判定点合二为一。
+

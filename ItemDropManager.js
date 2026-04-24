@@ -21,27 +21,30 @@ export class ItemDropManager {
   }
 
   update(deltaTime, playerPosition) {
+    // 核心修复：计算玩家身体中心点 (playerPosition 是头部/相机位置)
+    // 假设眼睛高度为 1.6，中心点下移 0.8 到腰部位置
+    const playerCenter = playerPosition.clone().setY(playerPosition.y - 0.8);
+
     for (let i = this.drops.length - 1; i >= 0; i--) {
       const drop = this.drops[i];
       
       // 1. 物理与动画更新
       drop.update(deltaTime, this.worldManager);
 
-      // 2. 吸附逻辑
-      const dist = drop.mesh.position.distanceTo(playerPosition);
+      // 2. 吸附逻辑：计算到中心点的距离
+      const dist = drop.mesh.position.distanceTo(playerCenter);
       
       if (dist < 2.5) {
         // 触发吸附：取消重力
         drop.isMagnetic = true;
         
-        // 加速飞向玩家中心 (Y 偏移 0.5 对应玩家中心)
-        const target = playerPosition.clone().setY(playerPosition.y - 1.0); 
-        drop.mesh.position.lerp(target, deltaTime * 8.0);
+        // 加速飞向中心点
+        drop.mesh.position.lerp(playerCenter, deltaTime * 8.0);
       } else {
         drop.isMagnetic = false;
       }
 
-      // 3. 完成拾取
+      // 3. 完成拾取：现在判定点和飞行目标点一致了
       if (dist < 0.5) {
         const added = this.inventoryManager.addItem(drop.itemId, drop.amount);
         if (added > 0) {
@@ -50,14 +53,11 @@ export class ItemDropManager {
             drop.remove();
             this.drops.splice(i, 1);
           }
-          // 触发 UI 刷新
           if (window.refreshInventoryUI) window.refreshInventoryUI();
         } else {
-          // 背包满了，取消吸附让其落下
           drop.isMagnetic = false;
         }
       }
-
     }
   }
 }
