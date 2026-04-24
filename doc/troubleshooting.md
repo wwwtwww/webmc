@@ -37,6 +37,7 @@
 *   **症状**：`/give` 指令可以给予负数或零，导致背包数据异常。
 *   **修复**：在 `CommandParser.js` 中增加了正数校验，并会根据 `addItem` 的布尔返回值给玩家提供准确的反馈。
 
-## 9. 合成系统：预览同步失效
-*   **症状**：使用 `/give` 指令获得材料后，或者从合成格移走材料后，产出槽显示 stale 数据。
-*   **修复**：在 `onUpdateUI` 钩子中强制调用 `inventoryUI.updateCrafting()`，确保数据变动时合成结果同步刷新。
+## 10. 初始化：ReferenceError (Black Screen)
+*   **症状**：控制台报错 `ReferenceError: Cannot access 'xxx' before initialization`，游戏黑屏。
+*   **原因**：在 `main.js` 中，一些变量（如 `scene` 或 `hasSpawned`）在定义之前就被构造函数或逻辑代码引用。JavaScript 的 `let` 和 `const` 存在暂时性死区 (TDZ)。
+*   **修复**：严格梳理初始化顺序，确保基础场景对象（scene, camera）和物理状态常量定义在所有逻辑引用（如 `ItemDropManager` 的实例化）之前。

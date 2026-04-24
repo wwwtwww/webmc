@@ -9,6 +9,7 @@ import { CraftingManager } from './CraftingManager.js';
 import { SkyManager } from './SkyManager.js';
 import { CommandParser } from './CommandParser.js';
 import { MobManager } from './MobManager.js';
+import { ItemDropManager } from './ItemDropManager.js';
 
 // 初始化音效管理器
 const audioManager = new AudioManager();
@@ -31,7 +32,8 @@ const blockData = {
   8: { name: '玻璃', color: '#aaddff' },
   9: { name: '木板', color: '#a67d3d' },
   10: { name: '木棍', color: '#7d5e2a' },
-  11: { name: '工作台', color: '#d9a066' }
+  11: { name: '工作台', color: '#d9a066' },
+  50: { name: '生猪肉', color: '#ffafb0' }
 };
 
 // --- 背包与合成系统初始化 ---
@@ -40,6 +42,13 @@ const craftingManager = new CraftingManager();
 const inventoryUI = new InventoryUI(blockData, craftingManager);
 let isInventoryOpen = false;
 let isOpeningInventory = false; 
+
+// --- 物理与状态常量 ---
+let hasSpawned = false;
+const velocity = new THREE.Vector3();
+const playerRadius = 0.3, playerHeight = 1.8, eyeHeight = 1.6, gravity = 30.0, jumpSpeed = 10.0;
+let isGrounded = false, lastFootstepTime = 0;
+const spawnX = 16, spawnZ = 16; 
 
 // --- 场景组件：天空与灯光管理器 ---
 let skyManager; 
@@ -213,8 +222,7 @@ window.addEventListener('keydown', (e) => {
 });
 // -----------------------
 
-// --- 快捷栏逻辑 ---
-const hotbarItems = [1, 2, 4, 5, 3, 6, 7, 8, 0]; 
+// --- 快捷栏逻辑 (从背包同步) ---
 let selectedSlot = 0;
 
 function initHotbarUI() {
@@ -222,24 +230,28 @@ function initHotbarUI() {
   if (!hotbar) return;
   hotbar.innerHTML = ''; 
 
-  hotbarItems.forEach((id, index) => {
+  for (let index = 0; index < 9; index++) {
+    const item = inventoryManager.slots[index];
     const slot = document.createElement('div');
     slot.className = `slot ${index === selectedSlot ? 'selected' : ''}`;
     slot.dataset.index = index;
 
-    if (id !== 0) {
-      const info = blockData[id];
-      slot.innerHTML = `
-        <div class="cube-icon">
-          <div class="face top" style="background-color: ${info.color}"></div>
-          <div class="face front" style="background-color: ${info.color}"></div>
-          <div class="face right" style="background-color: ${info.color}"></div>
-        </div>
-        <div class="slot-text">${info.name}</div>
-      `;
+    if (item && item.id !== 0) {
+      const info = blockData[item.id];
+      if (info) {
+        slot.innerHTML = `
+          <div class="cube-icon">
+            <div class="face top" style="background-color: ${info.color}"></div>
+            <div class="face front" style="background-color: ${info.color}"></div>
+            <div class="face right" style="background-color: ${info.color}"></div>
+          </div>
+          <div class="slot-text">${info.name}</div>
+          <div class="count" style="position:absolute; bottom:2px; right:2px; color:white; font-size:12px; font-weight:bold; text-shadow:1px 1px 2px black;">${item.count > 1 ? item.count : ''}</div>
+        `;
+      }
     }
     hotbar.appendChild(slot);
-  });
+  }
 }
 
 function updateHotbarUI() {
@@ -271,6 +283,13 @@ scene.background = new THREE.Color(skyColor);
 const fogFar = renderDistance * chunkSize * 1.2;
 const fogNear = fogFar * 0.4;
 scene.fog = new THREE.Fog(skyColor, fogNear, fogFar);
+
+// --- 掉落物系统初始化 ---
+const itemDropManager = new ItemDropManager(scene, null, inventoryManager, blockData);
+window.refreshInventoryUI = () => {
+  inventoryUI.render(inventoryManager);
+  initHotbarUI();
+};
 
 // 2. 初始化透视相机
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -342,8 +361,11 @@ commandParser = new CommandParser({
 const worldManager = new WorldManager(scene, renderDistance, chunkSize);
 worldManager.update(camera.position);
 
+// 完善掉落物管理器的依赖
+itemDropManager.worldManager = worldManager;
+
 // 初始化生物管理器
-const mobManager = new MobManager(scene, worldManager);
+const mobManager = new MobManager(scene, worldManager, itemDropManager);
 
 // 6. 第一人称控制
 const controls = new PointerLockControls(camera, document.body);
@@ -354,8 +376,18 @@ controls.addEventListener('lock', () => {
   if (isInventoryOpen) {
     if (inventoryUI.holdingItem) {
       const added = inventoryManager.addItem(inventoryUI.holdingItem.id, inventoryUI.holdingItem.count);
-      if (!added) { controls.unlock(); return; }
-      inventoryUI.holdingItem = null;
+      if (added > 0) {
+        inventoryUI.holdingItem.count -= added;
+        if (inventoryUI.holdingItem.count <= 0) {
+          inventoryUI.holdingItem = null;
+        }
+      }
+      // 如果依然有剩余，强制重新打开背包（或者允许掉落，这里选择保留在鼠标上并提示）
+      if (inventoryUI.holdingItem) {
+        isOpeningInventory = true;
+        controls.unlock();
+        return;
+      }
       inventoryUI.updateDragCursor();
     }
     isInventoryOpen = false;
@@ -459,8 +491,13 @@ document.addEventListener('mousedown', (e) => {
       targetBlock = { x: Math.floor(voxelPos.x), y: Math.floor(voxelPos.y), z: Math.floor(voxelPos.z) };
       if (miningProgressContainer) miningProgressContainer.style.display = 'block';
     } else {
-      const blockType = hotbarItems[selectedSlot];
-      if (blockType !== 0) { worldManager.setBlock(voxelPos.x, voxelPos.y, voxelPos.z, blockType); audioManager.playSound('place'); }
+      const item = inventoryManager.slots[selectedSlot];
+      if (item && item.id !== 0 && blockData[item.id]) {
+        worldManager.setBlock(voxelPos.x, voxelPos.y, voxelPos.z, item.id);
+        inventoryManager.removeItem(selectedSlot, 1);
+        initHotbarUI();
+        audioManager.playSound('place');
+      }
     }
   }
 });
@@ -470,10 +507,6 @@ window.addEventListener('resize', () => { camera.aspect = window.innerWidth / wi
 
 // 10. 物理与动画循环
 let prevTime = performance.now();
-const velocity = new THREE.Vector3();
-const playerRadius = 0.3, playerHeight = 1.8, eyeHeight = 1.6, gravity = 30.0, jumpSpeed = 10.0;
-let isGrounded = false, lastFootstepTime = 0, hasSpawned = false;
-const spawnX = 16, spawnZ = 16; 
 
 function checkCollision(pos) {
   if (isFlying) return false;
@@ -488,11 +521,33 @@ function checkCollision(pos) {
 }
 
 function findSafeSpawn() {
-  const currentChunkX = Math.floor(spawnX / chunkSize), currentChunkZ = Math.floor(spawnZ / chunkSize);
-  const chunk = worldManager.chunks.get(`${currentChunkX},${currentChunkZ}`);
-  if (chunk && chunk.generated) {
-    const y = worldManager.getHighestBlock(spawnX, spawnZ);
-    if (y !== null) { camera.position.set(spawnX, y + 1 + eyeHeight, spawnZ); hasSpawned = true; }
+  // 螺旋搜索算法寻找最近的有地面区块
+  const centerX = Math.floor(spawnX / chunkSize);
+  const centerZ = Math.floor(spawnZ / chunkSize);
+  const searchRadius = 2; // 搜索周围 5x5 个区块
+
+  for (let r = 0; r <= searchRadius; r++) {
+    for (let dz = -r; dz <= r; dz++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.abs(dx) !== r && Math.abs(dz) !== r) continue;
+        
+        const cx = centerX + dx;
+        const cz = centerZ + dz;
+        const chunk = worldManager.chunks.get(`${cx},${cz}`);
+        
+        if (chunk && chunk.generated) {
+          const testX = cx * chunkSize + chunkSize / 2;
+          const testZ = cz * chunkSize + chunkSize / 2;
+          const y = worldManager.getHighestBlock(testX, testZ);
+          if (y !== null && y > 0) {
+            camera.position.set(testX, y + 1 + eyeHeight, testZ);
+            hasSpawned = true;
+            console.log(`[Spawn] Safe spot found at ${camera.position.x}, ${y}, ${camera.position.z}`);
+            return;
+          }
+        }
+      }
+    }
   }
 }
 
@@ -504,6 +559,7 @@ function animate() {
   worldManager.update(camera.position);
   if (skyManager) skyManager.update(delta);
   if (mobManager) mobManager.update(delta, camera.position);
+  if (itemDropManager) itemDropManager.update(delta, camera.position);
 
   if (controls.isLocked) {
     if (isMining && targetBlock) {
@@ -525,8 +581,8 @@ function animate() {
         if (miningProgress >= 1.0) {
           const blockId = worldManager.getBlock(targetBlock.x, targetBlock.y, targetBlock.z);
           if (blockId !== 0) {
-            if (!inventoryManager.addItem(blockId, 1)) { controls.unlock(); return; }
-            inventoryUI.render(inventoryManager); initHotbarUI();
+            // 生成掉落物而非直接入包
+            itemDropManager.spawn(targetBlock.x + 0.5, targetBlock.y + 0.5, targetBlock.z + 0.5, blockId, 1);
           }
           worldManager.setBlock(targetBlock.x, targetBlock.y, targetBlock.z, 0); audioManager.playSound('dig');
           isMining = false; miningProgress = 0; targetBlock = null; if (miningProgressContainer) miningProgressContainer.style.display = 'none';

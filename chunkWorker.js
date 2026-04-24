@@ -44,21 +44,16 @@ const colorMap = {
   6: [0.9, 0.8, 0.5], // 沙子
   7: [0.95, 0.95, 1.0], // 雪
   8: [0.8, 0.9, 1.0], // 玻璃
+  50: [1.0, 0.68, 0.69], // 生猪肉 (粉色)
 };
 
 // --- 数学与辅助 ---
 function lerp(a, b, t) { return a + t * (b - a); }
-function trilinearLerp(v000, v100, v010, v110, v001, v101, v011, v111, tx, ty, tz) {
-  const x00 = lerp(v000, v100, tx), x10 = lerp(v010, v110, tx), x01 = lerp(v001, v101, tx), x11 = lerp(v011, v111, tx);
-  return lerp(lerp(x00, x10, ty), lerp(x01, x11, ty), tz);
-}
 function isTransparent(id) { 
-  // 0: 空气, 3: 水, 5: 树叶, 8: 玻璃, 255: 用户强制空气
   return id === 0 || id === 3 || id === 5 || id === 8 || id === 255; 
 }
 function vertexAO(s1, s2, c) { return s1 && s2 ? 0 : 3 - (Number(s1) + Number(s2) + Number(c)); }
 
-// 基于坐标的确定的伪随机数生成器 (0.0 到 1.0)
 function pseudoRandom(x, z) {
   const n = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453123;
   return n - Math.floor(n);
@@ -84,141 +79,124 @@ function growTree(data, x, y, z, pSize, chunkHeight) {
 }
 
 self.onmessage = function(e) {
-  const { paddedData, chunkSize, chunkHeight, chunkX, chunkZ, version, needsGeneration } = e.data;
+  const { voxels, chunkSize, chunkHeight, chunkX, chunkZ, version, needsGeneration, deltas } = e.data;
   const pSize = chunkSize + 2, pSize2 = pSize * pSize;
   const localData = new Uint8Array(pSize * chunkHeight * pSize);
 
   let newVoxels = null;
 
   if (needsGeneration) {
+    // 1. 地形生成
     for (let z = 0; z < pSize; z++) {
       for (let x = 0; x < pSize; x++) {
         const worldX = chunkX * chunkSize + x - 1;
         const worldZ = chunkZ * chunkSize + z - 1;
 
-        // 计算距离与安全区混合因子
         const distance = Math.sqrt(worldX * worldX + worldZ * worldZ);
         let factor = 1.0;
-        if (distance <= SPAWN_RADIUS) {
-          factor = 0.0;
-        } else if (distance < SPAWN_RADIUS + BLEND_RADIUS) {
-          // 平滑过渡 (0.0 到 1.0)
+        if (distance <= SPAWN_RADIUS) factor = 0.0;
+        else if (distance < SPAWN_RADIUS + BLEND_RADIUS) {
           const t = (distance - SPAWN_RADIUS) / BLEND_RADIUS;
-          factor = t * t * (3 - 2 * t); // Smoothstep 公式让过渡更自然
+          factor = t * t * (3 - 2 * t);
         }
 
         const bNoise = biomeNoise(worldX * BIOME_SCALE, worldZ * BIOME_SCALE);
         let biome = 'GRASS';
         if (factor > 0) {
-           if (bNoise < -0.4) biome = 'SNOWY';
-           else if (bNoise > 0.4) biome = 'DESERT';
+          if (bNoise < -0.4) biome = 'SNOWY';
+          else if (bNoise > 0.4) biome = 'DESERT';
         }
-        // factor == 0 时强制使用草地 (因为默认 biome 就是 GRASS)
 
         const hNoise = (noise3D(worldX * 0.005, 0, worldZ * 0.005) + 1) * 0.5;
         const randomBaseHeight = SEA_LEVEL + hNoise * 40;
-        // 混合基础高度
         const baseHeight = lerp(SAFE_HEIGHT, randomBaseHeight, factor);
 
         for (let y = 0; y < chunkHeight; y++) {
           const idx = y * pSize2 + z * pSize + x;
-          
           let density;
-          if (factor === 0) {
-            // 完全安全区：地表以下全为实心，以上全为空气
-            density = (baseHeight - y);
-          } else {
+          if (factor === 0) density = (baseHeight - y);
+          else {
             const dNoise = noise3D(worldX * NOISE_SCALE, y * NOISE_SCALE * 1.5, worldZ * NOISE_SCALE);
-            const randomDensity = dNoise + (randomBaseHeight - y) * 0.1;
-            // 完全安全区密度公式
-            const safeDensity = (baseHeight - y);
-            // 混合 3D 密度
-            density = lerp(safeDensity, randomDensity, factor);
+            density = lerp((baseHeight - y), dNoise + (randomBaseHeight - y) * 0.1, factor);
           }
 
           if (density > 0) {
-            if (y > SEA_LEVEL + 30 && biome === 'SNOWY') {
-              localData[idx] = 7;
-            } else if (y < SEA_LEVEL + 2 && biome === 'DESERT') {
-              localData[idx] = 6;
-            } else {
+            if (y > SEA_LEVEL + 30 && biome === 'SNOWY') localData[idx] = 7;
+            else if (y < SEA_LEVEL + 2 && biome === 'DESERT') localData[idx] = 6;
+            else {
               let surfDensity;
-              if (factor === 0) {
-                surfDensity = (baseHeight - (y + 1));
-              } else {
-                const dNoise = noise3D(worldX * NOISE_SCALE, (y + 1) * NOISE_SCALE * 1.5, worldZ * NOISE_SCALE);
-                const randomSurfDensity = dNoise + (randomBaseHeight - (y + 1)) * 0.1;
-                const safeSurfDensity = (baseHeight - (y + 1));
-                surfDensity = lerp(safeSurfDensity, randomSurfDensity, factor);
+              if (factor === 0) surfDensity = baseHeight - (y + 1);
+              else {
+                const dNoiseNext = noise3D(worldX * NOISE_SCALE, (y + 1) * NOISE_SCALE * 1.5, worldZ * NOISE_SCALE);
+                surfDensity = lerp((baseHeight - (y + 1)), dNoiseNext + (randomBaseHeight - (y + 1)) * 0.1, factor);
               }
-              
-              if (surfDensity <= 0) {
-                localData[idx] = (biome === 'DESERT') ? 6 : 1;
-              } else {
-                localData[idx] = (biome === 'DESERT') ? 6 : 2;
-              }
+              if (surfDensity <= 0) localData[idx] = (biome === 'DESERT') ? 6 : 1;
+              else localData[idx] = (biome === 'DESERT') ? 6 : 2;
             }
           } else if (y < SEA_LEVEL && factor > 0) {
-            // 安全区不允许有水淹没陆地 (SAFE_HEIGHT 设定为 64，大于 60)
             localData[idx] = 3;
           }
         }
-        
-        // 生成树木，即使在安全区也可以长树
+
         if (biome === 'GRASS' && pseudoRandom(worldX, worldZ) < 0.01) {
           let surfaceY = -1;
-          // 从上往下扫描寻找真实的最高地表方块
           for (let y = chunkHeight - 1; y >= 0; y--) {
             const block = localData[y * pSize2 + z * pSize + x];
-            if (block !== 0 && block !== 3) { // 遇到非空气且非水的方块
-              if (block === 1) surfaceY = y;  // 只有最高方块是草地才允许长树
+            if (block !== 0 && block !== 3) {
+              if (block === 1) surfaceY = y;
               break;
             }
           }
-          
           if (surfaceY > SEA_LEVEL && surfaceY < chunkHeight - 10) {
-             growTree(localData, x, surfaceY + 1, z, pSize, chunkHeight);
+            growTree(localData, x, surfaceY + 1, z, pSize, chunkHeight);
           }
         }
       }
     }
   } else {
-    localData.set(paddedData);
-  }
-
-  // --- 核心修复：合并 Dexie 传来的历史增量修改 ---
-  const { deltas } = e.data;
-  if (deltas) {
-    for (const dKey in deltas) {
-      const [lx, ly, lz] = dKey.split('_').map(Number);
-      const px = lx + 1, pz = lz + 1;
-      const idx = ly * pSize2 + pz * pSize + px;
-      localData[idx] = deltas[dKey];
+    // 2. 从主线程传入的数据组装 Padding
+    const { center, neighborL, neighborR, neighborB, neighborF } = voxels;
+    for (let y = 0; y < chunkHeight; y++) {
+      const yOff = y * pSize2;
+      const vyOff = y * chunkSize * chunkSize;
+      for (let z = 0; z < chunkSize; z++) {
+        for (let x = 0; x < chunkSize; x++) {
+          localData[yOff + (z + 1) * pSize + (x + 1)] = center[vyOff + z * chunkSize + x];
+        }
+      }
+      if (neighborL) for (let z = 0; z < chunkSize; z++) localData[yOff + (z + 1) * pSize + 0] = neighborL[vyOff + z * chunkSize + (chunkSize - 1)];
+      if (neighborR) for (let z = 0; z < chunkSize; z++) localData[yOff + (z + 1) * pSize + (chunkSize + 1)] = neighborR[vyOff + z * chunkSize + 0];
+      if (neighborB) for (let x = 0; x < chunkSize; x++) localData[yOff + 0 * pSize + (x + 1)] = neighborB[vyOff + (chunkSize - 1) * chunkSize + x];
+      if (neighborF) for (let x = 0; x < chunkSize; x++) localData[yOff + (chunkSize + 1) * pSize + (x + 1)] = neighborF[vyOff + 0 * chunkSize + x];
     }
   }
 
-  // --- 核心修复：从 18x256x18 的 localData 中提取 16x256x16 的核心体素返回给主线程 ---
+  // 3. 应用存档增量
+  if (deltas) {
+    for (const dKey in deltas) {
+      const [lx, ly, lz] = dKey.split('_').map(Number);
+      localData[ly * pSize2 + (lz + 1) * pSize + (lx + 1)] = deltas[dKey];
+    }
+  }
+
+  // 4. 如果是新生成的，提取中心 16x256x16 返回
   if (needsGeneration) {
     newVoxels = new Uint8Array(chunkSize * chunkHeight * chunkSize);
     for (let y = 0; y < chunkHeight; y++) {
       for (let z = 0; z < chunkSize; z++) {
         for (let x = 0; x < chunkSize; x++) {
-          // 映射：localData(x+1, y, z+1) -> voxels(x, y, z)
-          const lIdx = y * pSize2 + (z + 1) * pSize + (x + 1);
-          const vIdx = y * chunkSize * chunkSize + z * chunkSize + x;
-          newVoxels[vIdx] = localData[lIdx];
+          newVoxels[y * chunkSize * chunkSize + z * chunkSize + x] = localData[y * pSize2 + (z + 1) * pSize + (x + 1)];
         }
       }
     }
   }
 
-  // 2. 网格化渲染 (AO, 透明通道)
+  // 5. 网格化
   const channels = { opaque: { positions: [], normals: [], uvs: [], colors: [], indices: [] }, transparent: { positions: [], normals: [], uvs: [], colors: [], indices: [] } };
   const isOcc = (dx, dy, dz, cx, cy, cz) => {
     const ny = cy + dy;
     if (ny < 0 || ny >= chunkHeight) return false;
     const tid = localData[ny * pSize2 + (cz + dz) * pSize + (cx + dx)];
-    // 注意：255 也是透明的
     return tid !== 0 && !isTransparent(tid);
   };
 
@@ -227,7 +205,6 @@ self.onmessage = function(e) {
       for (let x = 0; x < chunkSize; x++) {
         const cx = x + 1, cz = z + 1;
         const voxel = localData[y * pSize2 + cz * pSize + cx];
-        // 核心修复：0 和 255 都不渲染
         if (voxel === 0 || voxel === 255) continue;
 
         const target = isTransparent(voxel) ? channels.transparent : channels.opaque;
@@ -238,13 +215,9 @@ self.onmessage = function(e) {
         for (const { dir, corners } of faces) {
           const nx = cx + dir[0], ny = y + dir[1], nz = cz + dir[2];
           const neighbor = (ny >= 0 && ny < chunkHeight) ? localData[ny * pSize2 + nz * pSize + nx] : 0;
-          
           let render = false;
-          if (!isTransparent(voxel)) {
-            if (isTransparent(neighbor)) render = true;
-          } else {
-            if (neighbor !== voxel) render = true;
-          }
+          if (!isTransparent(voxel)) { if (isTransparent(neighbor)) render = true; }
+          else { if (neighbor !== voxel) render = true; }
 
           if (render) {
             const ndx = target.positions.length / 3;

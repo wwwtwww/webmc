@@ -14,10 +14,11 @@ export class InventoryManager {
    * 尝试将物品加入背包
    * @param {number} id 物品ID
    * @param {number} amount 数量
-   * @returns {boolean} 是否添加成功
+   * @returns {number} 实际添加的数量
    */
   addItem(id, amount) {
-    if (amount <= 0) return false;
+    if (amount <= 0) return 0;
+    let initialAmount = amount;
     let remaining = amount;
 
     // 第一步：尝试在现有堆叠中增加数量
@@ -28,7 +29,7 @@ export class InventoryManager {
         item.count += canAdd;
         remaining -= canAdd;
       }
-      if (remaining <= 0) return true;
+      if (remaining <= 0) return initialAmount;
     }
 
     // 第二步：如果还有剩余，寻找空位放置
@@ -38,11 +39,10 @@ export class InventoryManager {
         this.slots[i] = { id, count: canAdd };
         remaining -= canAdd;
       }
-      if (remaining <= 0) return true;
+      if (remaining <= 0) return initialAmount;
     }
 
-    // 如果全部遍历完仍有剩余，说明背包满了（部分或全部添加失败）
-    return remaining === 0;
+    return initialAmount - remaining;
   }
 
   /**

@@ -25,11 +25,14 @@ export class Mob {
     this.maxHp = 10;
     this.isDead = false;
     this.originalColor = new THREE.Color(0xffafb0);
+    this.snoutColor = new THREE.Color(0xff8f90);
     // 每个生物持有独立的材质实例，防止全员闪红
     this.material = new THREE.MeshStandardMaterial({ color: this.originalColor });
+    this.snoutMaterial = new THREE.MeshStandardMaterial({ color: this.snoutColor });
     
     // 外部钩子：当生物彻底消失时触发（由 MobManager 移除）
     this.onRemove = null;
+    this.onDie = null;
 
     this.initModel();
   }
@@ -49,8 +52,7 @@ export class Mob {
 
     // 鼻子
     const snoutGeo = new THREE.BoxGeometry(0.2, 0.15, 0.1);
-    const snoutMat = new THREE.MeshStandardMaterial({ color: 0xff8f90 }); // 鼻子用固定深粉色
-    const snout = new THREE.Mesh(snoutGeo, snoutMat);
+    const snout = new THREE.Mesh(snoutGeo, this.snoutMaterial);
     snout.position.set(0, 0.75, 0.96);
     this.group.add(snout);
   }
@@ -65,11 +67,13 @@ export class Mob {
     
     // 1. 视觉反馈：瞬间闪红
     this.material.color.set(0xff0000);
+    this.snoutMaterial.color.set(0xff0000);
     
     // 2. 200ms 后恢复颜色
     setTimeout(() => {
       if (!this.isDead) {
         this.material.color.copy(this.originalColor);
+        this.snoutMaterial.color.copy(this.snoutColor);
       }
     }, 200);
 
@@ -89,8 +93,12 @@ export class Mob {
     this.isDead = true;
     this.hp = 0;
     
+    // 触发死亡钩子 (用于掉落物生成)
+    if (this.onDie) this.onDie(this.group.position.x, this.group.position.y, this.group.position.z);
+
     // 视觉反馈：变红并倾倒
     this.material.color.set(0xff0000);
+    this.snoutMaterial.color.set(0xff0000);
     this.group.rotation.z = Math.PI / 2; // 侧翻 90 度
     this.group.position.y -= 0.3; // 贴地
 
@@ -139,7 +147,8 @@ export class Mob {
     
     const checkMobCollision = (pos) => {
       const minX = Math.floor(pos.x - radius), maxX = Math.floor(pos.x + radius);
-      const minY = Math.floor(pos.y), maxY = Math.floor(pos.y + height);
+      // 使用 0.05 的偏移量防止在站在方块顶部时误判为内部碰撞
+      const minY = Math.floor(pos.y + 0.05), maxY = Math.floor(pos.y + height);
       const minZ = Math.floor(pos.z - radius), maxZ = Math.floor(pos.z + radius);
 
       for (let y = minY; y <= maxY; y++) {

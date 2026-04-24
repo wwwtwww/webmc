@@ -49,3 +49,14 @@
 
 ## 10. AudioManager (音效管理器)
 基于 THREE.AudioListener 和 THREE.Audio 的音频管理系统。
+
+## 11. ItemDropManager (掉落物管理器)
+负责掉落物的生命周期、物理更新与吸附逻辑。
+
+- `spawn(x, y, z, itemId, amount)`: 在指定坐标生成掉落物。
+- `update(delta, playerPos)`: 更新所有掉落物的旋转、悬浮动画、物理下落以及向玩家的磁力吸附。
+
+## 12. ItemDrop (掉落物实体)
+代表场景中的一个微缩方块掉落物。
+
+- `update(delta, worldManager)`: 处理自身的匀速旋转、简谐浮动以及与地面的基础碰撞。

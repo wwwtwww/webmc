@@ -7,9 +7,10 @@ import { getBiomeAt } from './VoxelWorld.js';
  * 负责生物的生成、卸载与更新
  */
 export class MobManager {
-  constructor(scene, worldManager) {
+  constructor(scene, worldManager, itemDropManager) {
     this.scene = scene;
     this.worldManager = worldManager;
+    this.itemDropManager = itemDropManager;
     this.mobs = new Map();
     this.nextId = 0;
     
@@ -66,6 +67,13 @@ export class MobManager {
     // 监听死亡移除事件
     mob.onRemove = (mid) => {
       this.despawn(mid);
+    };
+
+    // 监听死亡掉落事件
+    mob.onDie = (x, y, z) => {
+      if (this.itemDropManager) {
+        this.itemDropManager.spawn(x, y + 0.5, z, 50, 1);
+      }
     };
 
     this.mobs.set(id, mob);

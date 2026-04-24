@@ -161,42 +161,44 @@ export class WorldManager {
     const key = `${chunkX},${chunkZ}`, chunk = this.chunks.get(key);
     if (!chunk) return;
 
-    // 核心修复：立即分配 rid 并记录，确保后续 await 返回后能检测到更新的请求
     const rid = ++this.nextRequestId;
     chunk.lastRequestId = rid;
 
-    // 1. 异步获取该区块的历史修改 (Dexie)
     let deltas = null;
     if (!chunk.generated) {
       try {
         deltas = await getChunkDelta(key);
-        // 如果在等待期间有更晚的请求发出，则放弃当前请求
         if (chunk.lastRequestId !== rid) return;
       } catch (err) {
         console.error("加载存档失败:", err);
       }
     }
 
-    const pSize = this.chunkSize + 2, paddedData = new Uint8Array(pSize * this.chunkHeight * pSize);
-    for (let y = 0; y < this.chunkHeight; y++) {
-      for (let pz = 0; pz < pSize; pz++) {
-        for (let px = 0; px < pSize; px++) {
-          const worldX = chunkX * this.chunkSize + px - 1, worldZ = chunkZ * this.chunkSize + pz - 1;
-          const cx = Math.floor(worldX / this.chunkSize), cz = Math.floor(worldZ / this.chunkSize);
-          const c = this.chunks.get(`${cx},${cz}`);
-          let v = 0;
-          if (c) {
-            v = c.world.getBlock(Math.floor(worldX - cx * this.chunkSize), y, Math.floor(worldZ - cz * this.chunkSize));
-          }
-          paddedData[y * pSize * pSize + pz * pSize + px] = v;
-        }
-      }
-    }
+    // 收集中心区块及其 4 个邻居的体素数据 (网格化只需要 X/Z 邻居，Y 轴由 256 高度覆盖)
+    // 准备 5 个 Uint8Array: Center, Left, Right, Back, Front
+    const getVoxels = (x, z) => {
+      const c = this.chunks.get(`${x},${z}`);
+      return c ? c.world.data : null;
+    };
+
+    const center = chunk.world.data;
+    const neighborL = getVoxels(chunkX - 1, chunkZ);
+    const neighborR = getVoxels(chunkX + 1, chunkZ);
+    const neighborB = getVoxels(chunkX, chunkZ - 1);
+    const neighborF = getVoxels(chunkX, chunkZ + 1);
+
+    // 核心修复：移除 transfer 数组！
+    // 不再转移 buffer 所有权，改用结构化克隆复制数据 (320KB 拷贝耗时极低)，
+    // 确保主线程的 chunk.world.data 不会变为 Detached 状态。
     worker.postMessage({ 
-      paddedData, chunkSize: this.chunkSize, chunkHeight: this.chunkHeight, 
+      chunkSize: this.chunkSize, chunkHeight: this.chunkHeight, 
       chunkX, chunkZ, version: rid, needsGeneration: !chunk.generated,
-      deltas // 传递增量数据
-    }, [paddedData.buffer]);
+      deltas,
+      voxels: {
+        center,
+        neighborL, neighborR, neighborB, neighborF
+      }
+    });
   }
 
   update(playerPos) {
