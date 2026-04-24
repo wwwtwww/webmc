@@ -331,7 +331,11 @@ scene.add(directionalLight);
 skyManager = new SkyManager(scene, ambientLight, directionalLight);
 commandParser = new CommandParser({
   inventoryManager, skyManager, camera,
-  onUpdateUI: () => { inventoryUI.render(inventoryManager); initHotbarUI(); }
+  onUpdateUI: () => { 
+    inventoryUI.updateCrafting(); // 关键修复：控制台指令操作后也需要刷新合成预览
+    inventoryUI.render(inventoryManager); 
+    initHotbarUI(); 
+  }
 });
 
 // 5. 初始化世界管理器

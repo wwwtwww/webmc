@@ -60,11 +60,16 @@ export class CommandParser {
   handleGive(args) {
     const id = parseInt(args[0]);
     const amount = parseInt(args[1] || 1);
-    if (isNaN(id)) return '用法: /give [id] [数量]';
+    if (isNaN(id) || isNaN(amount) || amount <= 0) return '用法: /give [id] [数量(必须为正)]';
     
-    this.ctx.inventoryManager.addItem(id, amount);
+    const added = this.ctx.inventoryManager.addItem(id, amount);
     this.ctx.onUpdateUI(); // 通知刷新界面
-    return `已给予物品 ID:${id} 数量:${amount}`;
+    
+    if (added) {
+      return `已给予物品 ID:${id} 数量:${amount}`;
+    } else {
+      return `警告: 背包已满，部分或全部物品未被给予。`;
+    }
   }
 
   handleTeleport(args) {

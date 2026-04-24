@@ -17,6 +17,7 @@ export class InventoryManager {
    * @returns {boolean} 是否添加成功
    */
   addItem(id, amount) {
+    if (amount <= 0) return false;
     let remaining = amount;
 
     // 第一步：尝试在现有堆叠中增加数量

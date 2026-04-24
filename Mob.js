@@ -101,12 +101,11 @@ export class Mob {
   }
 
   update(delta, worldManager) {
-    if (this.isDead) return; // 死亡后停止 AI 和物理
+    if (this.isDead) return;
 
     this.stateTimer -= delta;
 
     if (this.stateTimer <= 0) {
-      // 随机切换状态
       if (this.state === 'idle') {
         this.state = 'walking';
         this.stateTimer = 2 + Math.random() * 3;
@@ -117,7 +116,6 @@ export class Mob {
       }
     }
 
-    // 转向逻辑
     const angleDiff = this.targetRotation - this.rotation;
     this.rotation += angleDiff * delta * 2;
     this.group.rotation.y = this.rotation;
@@ -131,32 +129,64 @@ export class Mob {
       this.velocity.z = 0;
     }
 
-    // 重力
     this.velocity.y -= 30.0 * delta;
 
-    // 物理移动与简单的碰撞检查
-    const nextPos = this.group.position.clone().add(this.velocity.clone().multiplyScalar(delta));
+    const deltaPos = this.velocity.clone().multiplyScalar(delta);
     
-    const blockX = Math.floor(nextPos.x);
-    const blockY = Math.floor(nextPos.y);
-    const blockZ = Math.floor(nextPos.z);
+    // --- 核心修复：基于 AABB 的生物碰撞系统 ---
+    const radius = 0.35;
+    const height = 0.8;
     
-    const groundVoxel = worldManager.getBlock(blockX, blockY, blockZ);
-    const headVoxel = worldManager.getBlock(blockX, blockY + 1, blockZ);
+    const checkMobCollision = (pos) => {
+      const minX = Math.floor(pos.x - radius), maxX = Math.floor(pos.x + radius);
+      const minY = Math.floor(pos.y), maxY = Math.floor(pos.y + height);
+      const minZ = Math.floor(pos.z - radius), maxZ = Math.floor(pos.z + radius);
 
-    if (groundVoxel !== 0 && groundVoxel !== 3) {
-      this.group.position.y = blockY + 1;
-      this.velocity.y = 0;
-      
-      if (headVoxel !== 0 && headVoxel !== 3) {
-        this.velocity.y = 8.0;
+      for (let y = minY; y <= maxY; y++) {
+        for (let z = minZ; z <= maxZ; z++) {
+          for (let x = minX; x <= maxX; x++) {
+            const voxel = worldManager.getBlock(x, y, z);
+            if (voxel !== 0 && voxel !== 3) return true;
+          }
+        }
       }
-    } else {
-      this.group.position.y = nextPos.y;
+      return false;
+    };
+
+    // Y 轴移动与碰撞
+    this.group.position.y += deltaPos.y;
+    if (checkMobCollision(this.group.position)) {
+      if (this.velocity.y < 0) {
+        // 落地
+        this.group.position.y = Math.floor(this.group.position.y) + 1;
+        this.velocity.y = 0;
+        
+        // 自动跳跃避障逻辑
+        if (this.state === 'walking') {
+          const probePos = this.group.position.clone();
+          const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.rotation);
+          probePos.add(forward.multiplyScalar(radius + 0.1));
+          if (checkMobCollision(probePos)) {
+            this.velocity.y = 8.0;
+          }
+        }
+      } else {
+        this.group.position.y -= deltaPos.y;
+        this.velocity.y = 0;
+      }
     }
 
-    this.group.position.x = nextPos.x;
-    this.group.position.z = nextPos.z;
+    // X 轴移动
+    this.group.position.x += deltaPos.x;
+    if (checkMobCollision(this.group.position)) {
+      this.group.position.x -= deltaPos.x;
+    }
+
+    // Z 轴移动
+    this.group.position.z += deltaPos.z;
+    if (checkMobCollision(this.group.position)) {
+      this.group.position.z -= deltaPos.z;
+    }
 
     if (this.group.position.y < -10) {
       this.group.position.set(16, 100, 16);
