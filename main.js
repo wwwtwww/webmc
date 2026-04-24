@@ -422,6 +422,27 @@ const miningProgressBar = document.getElementById('mining-progress');
 document.addEventListener('mousedown', (e) => {
   if (!controls.isLocked) return;
   raycaster.setFromCamera(center, camera);
+
+  // 1. 优先检查是否击中生物
+  const mobGroups = Array.from(mobManager.mobs.values()).map(m => m.group);
+  const mobIntersects = raycaster.intersectObjects(mobGroups, true);
+
+  if (mobIntersects.length > 0 && mobIntersects[0].distance <= MAX_REACH) {
+    if (e.button === 0) { // 左键攻击
+      const hitGroup = mobIntersects[0].object.parent; // 获取 Mob 的 Group
+      // 寻找对应的 Mob 实例
+      for (const mob of mobManager.mobs.values()) {
+        if (mob.group === hitGroup || mob.group === mobIntersects[0].object.parent.parent) {
+          mob.takeDamage(2);
+          audioManager.playSound('dig', 0.5); // 借用挖掘声作为打击反馈
+          return; // 攻击了生物就不再挖掘方块
+        }
+      }
+    }
+    return;
+  }
+
+  // 2. 检查方块
   const chunkMeshes = Array.from(worldManager.chunks.values()).flatMap(c => [c.opaqueMesh, c.transparentMesh]);
   const intersects = raycaster.intersectObjects(chunkMeshes);
   if (intersects.length > 0) {

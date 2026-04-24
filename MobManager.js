@@ -62,6 +62,12 @@ export class MobManager {
   spawn(type, position) {
     const id = this.nextId++;
     const mob = new Mob(id, type, position);
+    
+    // 监听死亡移除事件
+    mob.onRemove = (mid) => {
+      this.despawn(mid);
+    };
+
     this.mobs.set(id, mob);
     this.scene.add(mob.group);
     console.log(`[Mob] Spawned ${type} at ${position.x.toFixed(1)}, ${position.z.toFixed(1)}`);
