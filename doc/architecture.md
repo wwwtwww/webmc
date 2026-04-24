@@ -22,7 +22,7 @@
 ## 4. 关键子系统架构
 * **天空与环境系统 (SkyManager)**：
   - **解耦驱动**：场景的 `background`、`fog` 以及 `DirectionalLight` 的颜色和位置均由 `SkyManager` 统一管理。
-  - **光影映射**：提供 `setTime(0.0 ~ 1.0)` 接口，将抽象时间映射为具体的视觉氛围（黎明、正午、黄昏、深夜）。
+  - **24 小时制模型**：提供 `setTime(0.0 ~ 24.0)` 接口，将抽象时间映射为具体的视觉氛围（黎明、正午、黄昏、深夜）。内置 `dayDuration` 控制自动昼夜循环速度。
 * **开发者控制台 (CommandParser)**：
   - **指令路由**：通过简单的字符串解析支持快捷调试，可直接操作 `SkyManager`、`InventoryManager` 和 `Camera`。
 * **背包与合成系统**：
