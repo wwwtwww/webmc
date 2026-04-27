@@ -408,7 +408,7 @@ initHelpOverlay();
 itemDropManager.worldManager = worldManager;
 
 // 初始化生物管理器
-const mobManager = new MobManager(scene, worldManager, itemDropManager);
+const mobManager = new MobManager(scene, worldManager, itemDropManager, skyManager);
 
 // 6. 第一人称控制
 const controls = new PointerLockControls(camera, document.body);

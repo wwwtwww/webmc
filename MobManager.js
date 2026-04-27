@@ -7,10 +7,11 @@ import { getBiomeAt } from './VoxelWorld.js';
  * 负责生物的生成、卸载与更新
  */
 export class MobManager {
-  constructor(scene, worldManager, itemDropManager) {
+  constructor(scene, worldManager, itemDropManager, skyManager) {
     this.scene = scene;
     this.worldManager = worldManager;
     this.itemDropManager = itemDropManager;
+    this.skyManager = skyManager;
     this.mobs = new Map();
     this.nextId = 0;
     
@@ -52,10 +53,31 @@ export class MobManager {
     const sy = this.worldManager.getHighestBlock(sx, sz);
     
     if (sy !== null) {
-      // 检查群落：只在草地生成猪
-      const biome = getBiomeAt(sx, sz);
-      if (biome.includes('GRASS')) {
-        this.spawn('pig', new THREE.Vector3(sx, sy + 1, sz));
+      const time = this.skyManager ? this.skyManager.time : 12; // 默认中午
+      const isNight = time > 18 || time < 6;
+      
+      let spawnType = null;
+      if (isNight) {
+        // 夜晚：70% 僵尸，30% 猪
+        if (Math.random() < 0.7) {
+          spawnType = 'zombie';
+        } else {
+          // 猪只能在草地生成
+          const biome = getBiomeAt(sx, sz);
+          if (biome.includes('GRASS')) {
+            spawnType = 'pig';
+          }
+        }
+      } else {
+        // 白天：100% 猪 (在草地)
+        const biome = getBiomeAt(sx, sz);
+        if (biome.includes('GRASS')) {
+          spawnType = 'pig';
+        }
+      }
+
+      if (spawnType) {
+        this.spawn(spawnType, new THREE.Vector3(sx, sy + 1, sz));
       }
     }
   }
@@ -72,7 +94,10 @@ export class MobManager {
     // 监听死亡掉落事件
     mob.onDie = (x, y, z) => {
       if (this.itemDropManager) {
-        this.itemDropManager.spawn(x, y + 0.5, z, 50, 1);
+        // 猪掉落生猪肉 (50)，僵尸暂时不掉落或掉落占位符
+        if (type === 'pig') {
+          this.itemDropManager.spawn(x, y + 0.5, z, 50, 1);
+        }
       }
     };
 
