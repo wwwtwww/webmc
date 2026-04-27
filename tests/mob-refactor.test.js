@@ -23,7 +23,7 @@ describe('Mob Refactor', () => {
 
   it('enters chasing state when zombie is near player', () => {
     const worldManager = { 
-      getBlock: () => 0 
+      getBlock: (x, y, z) => y < 0 ? 1 : 0 
     };
     const playerPos = new THREE.Vector3(5, 0, 0);
     const mob = new Mob(3, 'zombie', new THREE.Vector3(0, 0, 0));

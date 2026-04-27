@@ -2,9 +2,12 @@ import { describe, it, expect, vi } from 'vitest';
 import { Pathfinder } from '../Pathfinder.js';
 
 describe('Pathfinder', () => {
-  it('finds a path between two adjacent empty blocks', () => {
+  it('finds a path between two adjacent empty blocks with floor', () => {
     const worldManager = {
-      getBlock: vi.fn((x, y, z) => 0)
+      getBlock: vi.fn((x, y, z) => {
+        if (y === -1) return 1; // Solid floor
+        return 0; // Air
+      })
     };
 
     const start = { x: 0, y: 0, z: 0 };
@@ -20,7 +23,8 @@ describe('Pathfinder', () => {
   it('finds a path around an obstacle', () => {
     const worldManager = {
       getBlock: vi.fn((x, y, z) => {
-        // Create a wall at x=1, from y=-1 to 1, z=0
+        if (y === -1) return 1; // Solid floor
+        // Create a wall at x=1, y=0, z=0
         if (x === 1 && y === 0 && z === 0) return 1; // Stone
         return 0; // Air
       })
@@ -41,7 +45,11 @@ describe('Pathfinder', () => {
 
   it('allows paths through water (block type 3)', () => {
     const worldManager = {
-      getBlock: vi.fn((x, y, z) => (x === 1 && y === 0 && z === 0) ? 3 : 0)
+      getBlock: vi.fn((x, y, z) => {
+        if (y === -1) return 1; // Solid floor
+        if (x === 1 && y === 0 && z === 0) return 3; // Water
+        return 0; // Air
+      })
     };
 
     const start = { x: 0, y: 0, z: 0 };
@@ -54,13 +62,13 @@ describe('Pathfinder', () => {
     // Path could go through (1, 0, 0) because it's water
   });
 
-  it('returns null when no path is found', () => {
+  it('returns null when no path is found due to no floor', () => {
     const worldManager = {
-      getBlock: vi.fn((x, y, z) => 1) // Everything is stone
+      getBlock: vi.fn((x, y, z) => 0) // Everything is air, no floor
     };
 
     const start = { x: 0, y: 0, z: 0 };
-    const goal = { x: 10, y: 10, z: 10 };
+    const goal = { x: 1, y: 0, z: 0 };
     const path = Pathfinder.findPath(start, goal, worldManager);
 
     expect(path).toBeNull();
@@ -68,7 +76,10 @@ describe('Pathfinder', () => {
 
   it('limits search to max nodes', () => {
       const worldManager = {
-        getBlock: vi.fn(() => 0)
+        getBlock: vi.fn((x, y, z) => {
+            if (y === -1) return 1;
+            return 0;
+        })
       };
 
       const start = { x: 0, y: 0, z: 0 };
@@ -77,5 +88,25 @@ describe('Pathfinder', () => {
       const path = Pathfinder.findPath(start, goal, worldManager, 10);
 
       expect(path).toBeNull();
+  });
+
+  it('requires 2-block height clearance', () => {
+    const worldManager = {
+      getBlock: vi.fn((x, y, z) => {
+        if (y === -1) return 1; // Solid floor
+        if (x === 1 && y === 1 && z === 0) return 1; // Low ceiling at x=1
+        return 0; // Air
+      })
+    };
+
+    const start = { x: 0, y: 0, z: 0 };
+    const goal = { x: 2, y: 0, z: 0 };
+    const path = Pathfinder.findPath(start, goal, worldManager);
+
+    // Should go around (1, 0, 0) because (1, 1, 0) is blocked
+    expect(path).toBeDefined();
+    path.forEach(node => {
+        expect(!(node.x === 1 && node.y === 0 && node.z === 0)).toBe(true);
+    });
   });
 });

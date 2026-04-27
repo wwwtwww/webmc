@@ -97,8 +97,17 @@ export class Pathfinder {
 
     static isTraversable(x, y, z, worldManager) {
         const blockType = worldManager.getBlock(x, y, z);
-        // Traversable if it's air (0) or water (3)
-        return blockType === 0 || blockType === 3;
+        const blockAbove = worldManager.getBlock(x, y + 1, z);
+        const blockBelow = worldManager.getBlock(x, y - 1, z);
+        
+        // 1. (x, y, z) is air/water
+        const currentOk = (blockType === 0 || blockType === 3);
+        // 2. (x, y-1, z) is solid
+        const belowOk = (blockBelow !== 0 && blockBelow !== 3);
+        // 3. (x, y+1, z) is air/water (2-block height clearance)
+        const aboveOk = (blockAbove === 0 || blockAbove === 3);
+        
+        return currentOk && belowOk && aboveOk;
     }
 
     static reconstructPath(node) {

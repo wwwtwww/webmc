@@ -237,7 +237,7 @@ export class Mob {
         this.velocity.y = 0;
         
         // 自动跳跃避障逻辑
-        if (this.state === 'walking') {
+        if (this.state === 'walking' || this.state === 'chasing') {
           const probePos = this.group.position.clone();
           const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.rotation);
           probePos.add(forward.multiplyScalar(radius + 0.1));
