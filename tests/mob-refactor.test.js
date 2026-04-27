@@ -20,4 +20,34 @@ describe('Mob Refactor', () => {
     expect(mob.moveSpeed).toBe(3.5);
     expect(mob.originalColor.getHex()).toBe(0x2d4d2d);
   });
+
+  it('enters chasing state when zombie is near player', () => {
+    const worldManager = { 
+      getBlock: () => 0 
+    };
+    const playerPos = new THREE.Vector3(5, 0, 0);
+    const mob = new Mob(3, 'zombie', new THREE.Vector3(0, 0, 0));
+    
+    // Force pathUpdateTimer to 0 to trigger pathfinding
+    mob.pathUpdateTimer = 0;
+    
+    mob.update(0.1, worldManager, playerPos);
+    
+    expect(mob.state).toBe('chasing');
+    expect(mob.moveSpeed).toBe(3.5);
+    expect(mob.path.length).toBeGreaterThan(0);
+  });
+
+  it('pig stays in idle or walking state even if player is near', () => {
+    const worldManager = { 
+      getBlock: () => 0 
+    };
+    const playerPos = new THREE.Vector3(5, 0, 0);
+    const mob = new Mob(4, 'pig', new THREE.Vector3(0, 0, 0));
+    
+    mob.update(0.1, worldManager, playerPos);
+    
+    expect(mob.state).not.toBe('chasing');
+    expect(mob.moveSpeed).toBe(2.0);
+  });
 });

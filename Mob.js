@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { Pathfinder } from './Pathfinder.js';
 
 /**
  * Mob.js
@@ -7,7 +8,7 @@ import * as THREE from 'three';
 export class Mob {
   constructor(id, type, position) {
     this.id = id;
-    this.type = type; // 'pig'
+    this.type = type; // 'pig', 'zombie'
     this.group = new THREE.Group();
     this.group.position.copy(position);
 
@@ -15,9 +16,11 @@ export class Mob {
     this.rotation = 0;
     
     // AI 状态
-    this.state = 'idle'; // 'idle', 'walking'
+    this.state = 'idle'; // 'idle', 'walking', 'chasing'
     this.stateTimer = 0;
     this.targetRotation = 0;
+    this.path = [];
+    this.pathUpdateTimer = 0;
 
     // --- 属性配置 ---
     if (type === 'zombie') {
@@ -117,18 +120,64 @@ export class Mob {
     }, 1000);
   }
 
-  update(delta, worldManager) {
+  update(delta, worldManager, playerPos) {
     if (!this.isDead) {
-      this.stateTimer -= delta;
+      let isChasing = false;
 
-      if (this.stateTimer <= 0) {
-        if (this.state === 'idle') {
-          this.state = 'walking';
-          this.stateTimer = 2 + Math.random() * 3;
-          this.targetRotation = Math.random() * Math.PI * 2;
-        } else {
-          this.state = 'idle';
-          this.stateTimer = 1 + Math.random() * 2;
+      // 僵尸追踪 AI
+      if (this.type === 'zombie' && playerPos) {
+        this.pathUpdateTimer -= delta;
+        const distToPlayer = this.group.position.distanceTo(playerPos);
+
+        if (distToPlayer < 15) {
+          if (this.pathUpdateTimer <= 0) {
+            this.path = Pathfinder.findPath(this.group.position, playerPos, worldManager) || [];
+            this.pathUpdateTimer = 1.0;
+          }
+
+          if (this.path.length > 0) {
+            isChasing = true;
+            this.state = 'chasing';
+            this.moveSpeed = 3.5;
+
+            let nextNode = this.path[0];
+            // 目标点在方块中心
+            let targetX = nextNode.x + 0.5;
+            let targetZ = nextNode.z + 0.5;
+            
+            const distToNode = Math.sqrt(
+              Math.pow(targetX - this.group.position.x, 2) +
+              Math.pow(targetZ - this.group.position.z, 2)
+            );
+
+            if (distToNode < 0.5) {
+              this.path.shift();
+              if (this.path.length > 0) {
+                nextNode = this.path[0];
+                targetX = nextNode.x + 0.5;
+                targetZ = nextNode.z + 0.5;
+              }
+            }
+            
+            this.targetRotation = Math.atan2(targetX - this.group.position.x, targetZ - this.group.position.z);
+          }
+        }
+      }
+
+      if (!isChasing) {
+        if (this.type === 'zombie') this.moveSpeed = 2.0;
+        else this.moveSpeed = 2.0;
+
+        this.stateTimer -= delta;
+        if (this.stateTimer <= 0) {
+          if (this.state === 'idle' || this.state === 'chasing') {
+            this.state = 'walking';
+            this.stateTimer = 2 + Math.random() * 3;
+            this.targetRotation = Math.random() * Math.PI * 2;
+          } else {
+            this.state = 'idle';
+            this.stateTimer = 1 + Math.random() * 2;
+          }
         }
       }
 
@@ -139,7 +188,7 @@ export class Mob {
       this.rotation += angleDiff * delta * 2;
       this.group.rotation.y = this.rotation;
 
-      if (this.state === 'walking') {
+      if (this.state === 'walking' || this.state === 'chasing') {
         const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.rotation);
         this.velocity.x = forward.x * this.moveSpeed;
         this.velocity.z = forward.z * this.moveSpeed;

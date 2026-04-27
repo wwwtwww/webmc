@@ -22,7 +22,7 @@ export class MobManager {
   update(delta, playerPos) {
     // 1. 更新所有存活生物
     for (const [id, mob] of this.mobs.entries()) {
-      mob.update(delta, this.worldManager);
+      mob.update(delta, this.worldManager, playerPos);
 
       // 距离玩家太远时自动卸载 (节省性能)
       const dist = mob.group.position.distanceTo(playerPos);
@@ -85,6 +85,7 @@ export class MobManager {
   despawn(id) {
     const mob = this.mobs.get(id);
     if (mob) {
+      mob.dispose(); // 核心修复：清理显存
       this.scene.remove(mob.group);
       this.mobs.delete(id);
     }
