@@ -18,14 +18,23 @@ export class Mob {
     this.state = 'idle'; // 'idle', 'walking'
     this.stateTimer = 0;
     this.targetRotation = 0;
-    this.moveSpeed = 2.0;
 
-    // --- 战斗系统属性 ---
-    this.hp = 10;
-    this.maxHp = 10;
+    // --- 属性配置 ---
+    if (type === 'zombie') {
+      this.hp = 20;
+      this.maxHp = 20;
+      this.moveSpeed = 3.5;
+      this.originalColor = new THREE.Color(0x2d4d2d);
+      this.snoutColor = new THREE.Color(0x2d4d2d);
+    } else {
+      this.hp = 10;
+      this.maxHp = 10;
+      this.moveSpeed = 2.0;
+      this.originalColor = new THREE.Color(0xffafb0);
+      this.snoutColor = new THREE.Color(0xff8f90);
+    }
+
     this.isDead = false;
-    this.originalColor = new THREE.Color(0xffafb0);
-    this.snoutColor = new THREE.Color(0xff8f90);
     // 每个生物持有独立的材质实例，防止全员闪红
     this.material = new THREE.MeshStandardMaterial({ color: this.originalColor });
     this.snoutMaterial = new THREE.MeshStandardMaterial({ color: this.snoutColor });
@@ -109,34 +118,42 @@ export class Mob {
   }
 
   update(delta, worldManager) {
-    if (this.isDead) return;
+    if (!this.isDead) {
+      this.stateTimer -= delta;
 
-    this.stateTimer -= delta;
-
-    if (this.stateTimer <= 0) {
-      if (this.state === 'idle') {
-        this.state = 'walking';
-        this.stateTimer = 2 + Math.random() * 3;
-        this.targetRotation = Math.random() * Math.PI * 2;
-      } else {
-        this.state = 'idle';
-        this.stateTimer = 1 + Math.random() * 2;
+      if (this.stateTimer <= 0) {
+        if (this.state === 'idle') {
+          this.state = 'walking';
+          this.stateTimer = 2 + Math.random() * 3;
+          this.targetRotation = Math.random() * Math.PI * 2;
+        } else {
+          this.state = 'idle';
+          this.stateTimer = 1 + Math.random() * 2;
+        }
       }
-    }
 
-    const angleDiff = this.targetRotation - this.rotation;
-    this.rotation += angleDiff * delta * 2;
-    this.group.rotation.y = this.rotation;
+      let angleDiff = this.targetRotation - this.rotation;
+      // 核心修复：弧度环绕补正，确保选择最短旋转路径 (Bug 31)
+      angleDiff = ((angleDiff + Math.PI) % (Math.PI * 2) + (Math.PI * 2)) % (Math.PI * 2) - Math.PI;
+      
+      this.rotation += angleDiff * delta * 2;
+      this.group.rotation.y = this.rotation;
 
-    if (this.state === 'walking') {
-      const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.rotation);
-      this.velocity.x = forward.x * this.moveSpeed;
-      this.velocity.z = forward.z * this.moveSpeed;
+      if (this.state === 'walking') {
+        const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.rotation);
+        this.velocity.x = forward.x * this.moveSpeed;
+        this.velocity.z = forward.z * this.moveSpeed;
+      } else {
+        this.velocity.x = 0;
+        this.velocity.z = 0;
+      }
     } else {
+      // 死亡后停止水平移动
       this.velocity.x = 0;
       this.velocity.z = 0;
     }
 
+    // 物理始终运行 (重力)
     this.velocity.y -= 30.0 * delta;
 
     const deltaPos = this.velocity.clone().multiplyScalar(delta);
@@ -200,5 +217,20 @@ export class Mob {
     if (this.group.position.y < -10) {
       this.group.position.set(16, 100, 16);
     }
+  }
+
+  dispose() {
+    this.group.traverse(child => {
+      if (child.isMesh) {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(m => m.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
+      }
+    });
   }
 }
