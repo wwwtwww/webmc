@@ -10,6 +10,7 @@ import { SkyManager } from './SkyManager.js';
 import { CommandParser } from './CommandParser.js';
 import { MobManager } from './MobManager.js';
 import { ItemDropManager } from './ItemDropManager.js';
+import { initHelpOverlay } from './HelpOverlay.js';
 
 // 初始化音效管理器
 const audioManager = new AudioManager();
@@ -32,8 +33,8 @@ const blockData = {
   8: { name: '玻璃', color: '#aaddff' },
   9: { name: '木板', color: '#a67d3d' },
   10: { name: '木棍', color: '#7d5e2a' },
-  11: { name: '工作台', color: '#d9a066' },
-  50: { name: '生猪肉', color: '#ffafb0' }
+  11: { name: '工作台', color: '#d9a066', placeable: true },
+  50: { name: '生猪肉', color: '#ffafb0', placeable: false }
 };
 
 // --- 背包与合成系统初始化 ---
@@ -42,6 +43,43 @@ const craftingManager = new CraftingManager();
 const inventoryUI = new InventoryUI(blockData, craftingManager);
 let isInventoryOpen = false;
 let isOpeningInventory = false; 
+
+// --- 玩家生命值状态 ---
+let playerHp = 20;
+const maxPlayerHp = 20;
+let lastDamageTime = 0;
+
+function updateHpUI() {
+  const hpElement = document.getElementById('hp-ui');
+  if (hpElement) {
+    hpElement.innerText = `HP: ${playerHp} / ${maxPlayerHp}`;
+  }
+}
+
+function takePlayerDamage(amount) {
+  playerHp -= amount;
+  updateHpUI();
+  
+  const flash = document.getElementById('damage-flash');
+  if (flash) {
+    flash.style.opacity = '0.5';
+    setTimeout(() => {
+      flash.style.opacity = '0';
+    }, 100);
+  }
+
+  if (playerHp <= 0) {
+    // 玩家死亡：重置位置并恢复生命
+    playerHp = maxPlayerHp;
+    updateHpUI();
+    hasSpawned = false; // 触发重新寻找安全出生点
+    camera.position.set(spawnX, 120, spawnZ);
+    velocity.set(0, 0, 0);
+    if (typeof addConsoleMsg === 'function') {
+      addConsoleMsg("You died!", "red");
+    }
+  }
+}
 
 // --- 物理与状态常量 ---
 let hasSpawned = false;
@@ -266,6 +304,7 @@ function updateHotbarUI() {
 }
 
 initHotbarUI();
+updateHpUI();
 
 window.addEventListener('keydown', (e) => {
   if (e.code.startsWith('Digit')) {
@@ -349,7 +388,7 @@ scene.add(directionalLight);
 // 初始化天空管理器与指令解析器
 skyManager = new SkyManager(scene, ambientLight, directionalLight);
 commandParser = new CommandParser({
-  inventoryManager, skyManager, camera,
+  inventoryManager, skyManager, camera, blockData,
   onUpdateUI: () => { 
     inventoryUI.updateCrafting(); // 关键修复：控制台指令操作后也需要刷新合成预览
     inventoryUI.render(inventoryManager); 
@@ -357,11 +396,15 @@ commandParser = new CommandParser({
   }
 });
 
-// 5. 初始化世界管理器
+// 初始化世界管理器
 const worldManager = new WorldManager(scene, renderDistance, chunkSize);
 worldManager.update(camera.position);
 
+// 初始化操作指南
+initHelpOverlay();
+
 // 完善掉落物管理器的依赖
+
 itemDropManager.worldManager = worldManager;
 
 // 初始化生物管理器
@@ -374,22 +417,31 @@ instructions.addEventListener('click', () => { controls.lock(); audioManager.ini
 controls.addEventListener('lock', () => {
   instructions.style.display = 'none';
   if (isInventoryOpen) {
+    // 核心修复：关闭背包时退回所有物品 (Bug 5)
+    // 1. 退回鼠标上的物品
     if (inventoryUI.holdingItem) {
       const added = inventoryManager.addItem(inventoryUI.holdingItem.id, inventoryUI.holdingItem.count);
-      if (added > 0) {
-        inventoryUI.holdingItem.count -= added;
-        if (inventoryUI.holdingItem.count <= 0) {
-          inventoryUI.holdingItem = null;
-        }
-      }
-      // 如果依然有剩余，强制重新打开背包（或者允许掉落，这里选择保留在鼠标上并提示）
-      if (inventoryUI.holdingItem) {
-        isOpeningInventory = true;
-        controls.unlock();
-        return;
-      }
-      inventoryUI.updateDragCursor();
+      inventoryUI.holdingItem.count -= added;
+      if (inventoryUI.holdingItem.count <= 0) inventoryUI.holdingItem = null;
     }
+    // 2. 退回 2x2 合成格中的物品
+    for (let i = 0; i < 4; i++) {
+      const item = inventoryUI.craftingSlots[i];
+      if (item) {
+        const added = inventoryManager.addItem(item.id, item.count);
+        item.count -= added;
+        if (item.count <= 0) inventoryUI.craftingSlots[i] = null;
+      }
+    }
+    
+    // 如果依然有剩余（背包全满），强制重新打开背包提示玩家
+    if (inventoryUI.holdingItem || inventoryUI.craftingSlots.some(s => s !== null)) {
+      isOpeningInventory = true;
+      controls.unlock();
+      return;
+    }
+
+    inventoryUI.updateDragCursor();
     isInventoryOpen = false;
     inventoryUI.uiContainer.style.display = 'none';
     initHotbarUI();
@@ -481,11 +533,26 @@ document.addEventListener('mousedown', (e) => {
   // 2. 检查方块
   const chunkMeshes = Array.from(worldManager.chunks.values()).flatMap(c => [c.opaqueMesh, c.transparentMesh]);
   const intersects = raycaster.intersectObjects(chunkMeshes);
-  if (intersects.length > 0) {
-    const intersect = intersects[0];
-    if (intersect.distance > MAX_REACH) return;
+  
+  // 核心修复：过滤射线检测结果，忽略水体 (Bug 23)
+  let validIntersect = null;
+  for (const intersect of intersects) {
+    if (intersect.distance > MAX_REACH) continue;
+    
+    // 计算该点代表的方块坐标 (略微向内缩进以准确定位方块)
     const normal = intersect.face.normal.clone();
-    let voxelPos = e.button === 0 ? intersect.point.clone().sub(normal.multiplyScalar(0.5)) : intersect.point.clone().add(normal.multiplyScalar(0.5));
+    const voxelPos = intersect.point.clone().sub(normal.clone().multiplyScalar(0.01));
+    const blockId = worldManager.getBlock(Math.floor(voxelPos.x), Math.floor(voxelPos.y), Math.floor(voxelPos.z));
+    
+    if (blockId !== 3) { // 如果不是水
+      validIntersect = intersect;
+      break;
+    }
+  }
+
+  if (validIntersect) {
+    const normal = validIntersect.face.normal.clone();
+    let voxelPos = e.button === 0 ? validIntersect.point.clone().sub(normal.multiplyScalar(0.5)) : validIntersect.point.clone().add(normal.multiplyScalar(0.5));
     if (e.button === 0) {
       isMining = true; miningProgress = 0;
       targetBlock = { x: Math.floor(voxelPos.x), y: Math.floor(voxelPos.y), z: Math.floor(voxelPos.z) };
@@ -493,10 +560,34 @@ document.addEventListener('mousedown', (e) => {
     } else {
       const item = inventoryManager.slots[selectedSlot];
       if (item && item.id !== 0 && blockData[item.id]) {
-        worldManager.setBlock(voxelPos.x, voxelPos.y, voxelPos.z, item.id);
-        inventoryManager.removeItem(selectedSlot, 1);
-        initHotbarUI();
-        audioManager.playSound('place');
+        // 核心修复：防止方块放置在玩家体内 (Bug 4)
+        const targetVoxelAABB = {
+          minX: Math.floor(voxelPos.x), maxX: Math.floor(voxelPos.x) + 1,
+          minY: Math.floor(voxelPos.y), maxY: Math.floor(voxelPos.y) + 1,
+          minZ: Math.floor(voxelPos.z), maxZ: Math.floor(voxelPos.z) + 1
+        };
+        const playerAABB = {
+          minX: camera.position.x - playerRadius, maxX: camera.position.x + playerRadius,
+          minY: camera.position.y - eyeHeight, maxY: camera.position.y - eyeHeight + playerHeight,
+          minZ: camera.position.z - playerRadius, maxZ: camera.position.z + playerRadius
+        };
+
+        const isOverlapping = (
+          targetVoxelAABB.minX < playerAABB.maxX && targetVoxelAABB.maxX > playerAABB.minX &&
+          targetVoxelAABB.minY < playerAABB.maxY && targetVoxelAABB.maxY > playerAABB.minY &&
+          targetVoxelAABB.minZ < playerAABB.maxZ && targetVoxelAABB.maxZ > playerAABB.minZ
+        );
+
+        // 核心修复：增加世界边界检查 (Bug 29)
+        const vy = Math.floor(voxelPos.y);
+        const isWithinBounds = vy >= 0 && vy < 256;
+
+        if ((!isOverlapping || isFlying) && blockData[item.id].placeable !== false && isWithinBounds) {
+          worldManager.setBlock(voxelPos.x, voxelPos.y, voxelPos.z, item.id);
+          inventoryManager.removeItem(selectedSlot, 1);
+          initHotbarUI();
+          audioManager.playSound('place');
+        }
       }
     }
   }
@@ -589,6 +680,19 @@ function animate() {
         }
       } else { miningProgress = 0; if (miningProgressBar) miningProgressBar.style.width = '0%'; }
     }
+
+    // 僵尸伤害逻辑
+    for (const mob of mobManager.mobs.values()) {
+      if (mob.type === 'zombie' && !mob.isDead) {
+        const distance = mob.group.position.distanceTo(camera.position);
+        if (distance < 1.2 && performance.now() - lastDamageTime > 1000) {
+          takePlayerDamage(2);
+          lastDamageTime = performance.now();
+          audioManager.playSound('dig', 1.0); // 暂用挖掘声作为伤害音效
+        }
+      }
+    }
+
     if (!hasSpawned && !isFlying) { findSafeSpawn(); velocity.y = 0; }
     const isReady = worldManager.chunks.get(`${Math.floor(camera.position.x/chunkSize)},${Math.floor(camera.position.z/chunkSize)}`)?.generated;
     updateDebugPanel();
