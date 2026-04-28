@@ -39,15 +39,25 @@
 *   [x] **Bug 33: 掉落物物理状态反复抖动 (物理与视觉脱节)** - 已在 `ItemDrop.js` 中分离视觉 `mesh` 的悬浮位置，使 `group` 物理包围盒紧贴地面方块之上，解决了物理循环抖动穿模问题。
 *   [x] **Bug 34: 无法透过水面或在水下挖掘方块** - 已在 `main.js` `animate` 射线挖掘检测更新逻辑中，对水方块(ID=3)进行了过滤，使其与 `mousedown` 逻辑保持一致。
 *   [x] **Bug 35: 放置方块未进行生物碰撞检测 (Entity Cramming)** - 已在 `main.js` 右键放置方块前，增加了遍历检查所有存活生物 AABB 的重叠判断。
+*   [x] **Bug 36: 数字键在控制台/背包打开时仍会切换快捷栏** - 已在数字键事件监听中增加了 `isConsoleOpen` 和 `isInventoryOpen` 的前置拦截判断，防止污染输入框。
+*   [x] **Bug 37: 攻击判定忽略方块遮挡，可隔墙命中生物** - 已重构射线检测逻辑，分别获取方块交点和生物交点后比较它们的 `distance`。只有在生物距离小于实体方块距离时，才判定命中生物，防止“隔墙打牛”。
+*   [x] **Bug 38: 区块加载/卸载没有同步刷新对角线 AO 邻居** - 已在 `WorldManager.update()` 中新区块生成和卸载的逻辑中补全了对角线 4 个相邻区块的 `markDirty` 调用，确保 AO 阴影完整刷新。
+*   [x] **Bug 39: A* 寻路允许斜向“穿角”** - 已在 `Pathfinder.isTraversable()` 中添加对角线运动（dx=1 且 dz=1）时对两侧相邻方块的碰撞体积校验，避免生物挤过墙角缝隙。
 
 ---
 
 ## 🔴 未修复缺陷 (Unresolved Bugs)
 
-*   [x] **Bug 36: 数字键在控制台/背包打开时仍会切换快捷栏** - 已在数字键事件监听中增加了 `isConsoleOpen` 和 `isInventoryOpen` 的前置拦截判断，防止污染输入框。
+*   [ ] **Bug 40: MobManager 属性引用错误导致生物生成逻辑失效** - 在 `MobManager.trySpawnAround` 中，代码使用了 `this.skyManager.time` 来判断昼夜，但 `SkyManager` 类中定义的属性名为 `timeOfDay`。这导致 `time` 为 `undefined`，使得昼夜判断失效（始终判定为白天），从而影响僵尸的正常生成。
+*   [ ] **Bug 41: 生物受击缺乏水平击退效果** - `Mob.takeDamage` 目前仅设置了 `velocity.y = 4.0`（垂直跳跃），缺乏将生物推离攻击者的水平冲量。此外，由于 `Mob.update` 在每一帧都会根据 AI 目标覆盖 `velocity.x` 和 `velocity.z`，导致即使设置了水平速度也会被立即抹除。
+*   [ ] **Bug 42: 背包满时关闭 UI 的逻辑死锁隐患** - 在 `main.js` 的 `toggleInventory` 和 `controls.lock` 监听器中，如果玩家背包已满且鼠标/合成格中仍有物品，代码会强制中断关闭操作或重新打开背包。虽然这是为了防止物品丢失，但缺乏 UI 提示（如“背包已满”文字），且可能导致玩家在尝试切回游戏时反复被弹回背包界面，产生挫败感。
+*   [ ] **Bug 43: 玩家被埋入方块时缺乏窒息伤害** - 物理引擎虽然能防止玩家走入墙体，但通过 `/tp` 指令或在未加载区块生成时，玩家仍有可能处于实体方块内部。目前系统没有检测这种状态并扣除生命值（窒息）的逻辑。
+*   [ ] **Bug 44: 多生物同时攻击玩家时缺乏全局无敌时间 (I-Frame)** - 僵尸的伤害逻辑在 `main.js` 的循环中独立计算。如果多个僵尸重叠在玩家位置，它们会各自独立触发 `takePlayerDamage`，导致玩家生命值瞬间清空。通常应引入受击后的短暂全局无敌时间。
 
-*   [x] **Bug 37: 攻击判定忽略方块遮挡，可隔墙命中生物** - 已重构射线检测逻辑，分别获取方块交点和生物交点后比较它们的 `distance`。只有在生物距离小于实体方块距离时，才判定命中生物，防止“隔墙打牛”。
+---
 
-*   [x] **Bug 38: 区块加载/卸载没有同步刷新对角线 AO 邻居** - 已在 `WorldManager.update()` 中新区块生成和卸载的逻辑中补全了对角线 4 个相邻区块的 `markDirty` 调用，确保 AO 阴影完整刷新。
+## ⚡ 性能优化建议 (Performance Optimization)
 
-*   [x] **Bug 39: A* 寻路允许斜向“穿角”** - 已在 `Pathfinder.isTraversable()` 中添加对角线运动（dx=1 且 dz=1）时对两侧相邻方块的碰撞体积校验，避免生物挤过墙角缝隙。
+*   [ ] **Optimization 1: 每帧射线检测的性能瓶颈 (Important)** - 在 `main.js` 的 `animate` 循环中，长按挖掘触发的多边形级别全局射线检测极为耗时。建议仅对 `targetBlock` 所在 Chunk 进行检测，或使用数据层面的轻量级体素步进 (DDA) 算法。
+*   [ ] **Optimization 2: A* 寻路队列时间复杂度退化 (Suggestion)** - `Pathfinder.js` 中的 `BinaryHeap` 的 `rescoreElement` 使用了 O(N) 的 `indexOf`。为了日后支持大规模长距离寻路，建议引入节点索引 Map 来实现 O(1) 更新，或者改用纯插入并在出队时过滤。
+*   [ ] **Optimization 3: 内存碎片与 GC 压力 (Suggestion)** - `Chunk.js` 每次触发网格化更新时都会销毁并重建全新的 `Float32Array`，增加了内存分配和垃圾回收的负担。建议预分配 Buffer 容量（如 3000 顶点）并通过 `geometry.setDrawRange()` 增量更新顶点数据。
