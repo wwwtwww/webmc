@@ -52,6 +52,11 @@ export class VoxelWorld {
  * 外部查询工具：根据全局世界坐标返回真实的群落名称
  */
 export function getBiomeAt(worldX, worldZ) {
+  // 核心修复：尊重出生点安全区逻辑 (Bug 13)
+  const SPAWN_RADIUS = 30;
+  const distance = Math.sqrt(worldX * worldX + worldZ * worldZ);
+  if (distance <= SPAWN_RADIUS) return 'GRASS (温带平原)';
+
   const biomeScale = 0.005;
   const bNoise = biomeNoise(worldX * biomeScale, worldZ * biomeScale);
   

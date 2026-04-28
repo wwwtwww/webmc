@@ -307,6 +307,7 @@ initHotbarUI();
 updateHpUI();
 
 window.addEventListener('keydown', (e) => {
+  if (isConsoleOpen || isInventoryOpen) return;
   if (e.code.startsWith('Digit')) {
     const num = parseInt(e.code.replace('Digit', '')) - 1;
     if (num >= 0 && num <= 8) {
@@ -410,6 +411,9 @@ itemDropManager.worldManager = worldManager;
 // 初始化生物管理器
 const mobManager = new MobManager(scene, worldManager, itemDropManager, skyManager);
 
+// 将 mobManager 注入指令解析器
+commandParser.ctx.mobManager = mobManager;
+
 // 6. 第一人称控制
 const controls = new PointerLockControls(camera, document.body);
 instructions.addEventListener('click', () => { controls.lock(); audioManager.init(camera); });
@@ -511,26 +515,7 @@ document.addEventListener('mousedown', (e) => {
   if (!controls.isLocked) return;
   raycaster.setFromCamera(center, camera);
 
-  // 1. 优先检查是否击中生物
-  const mobGroups = Array.from(mobManager.mobs.values()).map(m => m.group);
-  const mobIntersects = raycaster.intersectObjects(mobGroups, true);
-
-  if (mobIntersects.length > 0 && mobIntersects[0].distance <= MAX_REACH) {
-    if (e.button === 0) { // 左键攻击
-      const hitGroup = mobIntersects[0].object.parent; // 获取 Mob 的 Group
-      // 寻找对应的 Mob 实例
-      for (const mob of mobManager.mobs.values()) {
-        if (mob.group === hitGroup || mob.group === mobIntersects[0].object.parent.parent) {
-          mob.takeDamage(2);
-          audioManager.playSound('dig', 0.5); // 借用挖掘声作为打击反馈
-          return; // 攻击了生物就不再挖掘方块
-        }
-      }
-    }
-    return;
-  }
-
-  // 2. 检查方块
+  // 1. 先检查方块，获取最近的阻挡距离
   const chunkMeshes = Array.from(worldManager.chunks.values()).flatMap(c => [c.opaqueMesh, c.transparentMesh]);
   const intersects = raycaster.intersectObjects(chunkMeshes);
   
@@ -548,6 +533,33 @@ document.addEventListener('mousedown', (e) => {
       validIntersect = intersect;
       break;
     }
+  }
+
+  // 2. 再检查是否击中生物
+  const mobGroups = Array.from(mobManager.mobs.values()).map(m => m.group);
+  const mobIntersects = raycaster.intersectObjects(mobGroups, true);
+
+  let hitMob = null;
+  if (mobIntersects.length > 0 && mobIntersects[0].distance <= MAX_REACH) {
+    // 核心修复：比较生物距离与方块距离，避免隔墙打牛 (Bug 37)
+    if (!validIntersect || mobIntersects[0].distance < validIntersect.distance) {
+      hitMob = mobIntersects[0];
+    }
+  }
+
+  if (hitMob) {
+    if (e.button === 0) { // 左键攻击
+      const hitGroup = hitMob.object.parent; // 获取 Mob 的 Group
+      // 寻找对应的 Mob 实例
+      for (const mob of mobManager.mobs.values()) {
+        if (mob.group === hitGroup || mob.group === hitMob.object.parent.parent) {
+          mob.takeDamage(2);
+          audioManager.playSound('dig', 0.5); // 借用挖掘声作为打击反馈
+          return; // 攻击了生物就不再挖掘方块
+        }
+      }
+    }
+    return; // 命中生物但不是左键，也吃掉点击事件
   }
 
   if (validIntersect) {
@@ -572,11 +584,30 @@ document.addEventListener('mousedown', (e) => {
           minZ: camera.position.z - playerRadius, maxZ: camera.position.z + playerRadius
         };
 
-        const isOverlapping = (
+        let isOverlapping = (
           targetVoxelAABB.minX < playerAABB.maxX && targetVoxelAABB.maxX > playerAABB.minX &&
           targetVoxelAABB.minY < playerAABB.maxY && targetVoxelAABB.maxY > playerAABB.minY &&
           targetVoxelAABB.minZ < playerAABB.maxZ && targetVoxelAABB.maxZ > playerAABB.minZ
         );
+
+        if (!isOverlapping && mobManager) {
+          for (const mob of mobManager.mobs.values()) {
+            if (mob.isDead) continue;
+            const mobAABB = {
+              minX: mob.group.position.x - 0.35, maxX: mob.group.position.x + 0.35,
+              minY: mob.group.position.y, maxY: mob.group.position.y + 0.8,
+              minZ: mob.group.position.z - 0.35, maxZ: mob.group.position.z + 0.35
+            };
+            if (
+              targetVoxelAABB.minX < mobAABB.maxX && targetVoxelAABB.maxX > mobAABB.minX &&
+              targetVoxelAABB.minY < mobAABB.maxY && targetVoxelAABB.maxY > mobAABB.minY &&
+              targetVoxelAABB.minZ < mobAABB.maxZ && targetVoxelAABB.maxZ > mobAABB.minZ
+            ) {
+              isOverlapping = true;
+              break;
+            }
+          }
+        }
 
         // 核心修复：增加世界边界检查 (Bug 29)
         const vy = Math.floor(voxelPos.y);
@@ -657,14 +688,24 @@ function animate() {
       raycaster.setFromCamera(center, camera);
       const chunkMeshes = Array.from(worldManager.chunks.values()).flatMap(c => [c.opaqueMesh, c.transparentMesh]);
       const intersects = raycaster.intersectObjects(chunkMeshes);
-      let hitSameBlock = false;
-      if (intersects.length > 0) {
-        const intersect = intersects[0];
-        if (intersect.distance <= MAX_REACH) {
-          const normal = intersect.face.normal.clone();
-          const voxelPos = intersect.point.clone().sub(normal.multiplyScalar(0.5));
-          if (Math.floor(voxelPos.x) === targetBlock.x && Math.floor(voxelPos.y) === targetBlock.y && Math.floor(voxelPos.z) === targetBlock.z) hitSameBlock = true;
+      
+      let validIntersect = null;
+      for (const intersect of intersects) {
+        if (intersect.distance > MAX_REACH) continue;
+        const normal = intersect.face.normal.clone();
+        const testPos = intersect.point.clone().sub(normal.clone().multiplyScalar(0.01));
+        const blockId = worldManager.getBlock(Math.floor(testPos.x), Math.floor(testPos.y), Math.floor(testPos.z));
+        if (blockId !== 3) {
+          validIntersect = intersect;
+          break;
         }
+      }
+
+      let hitSameBlock = false;
+      if (validIntersect) {
+        const normal = validIntersect.face.normal.clone();
+        const voxelPos = validIntersect.point.clone().sub(normal.multiplyScalar(0.5));
+        if (Math.floor(voxelPos.x) === targetBlock.x && Math.floor(voxelPos.y) === targetBlock.y && Math.floor(voxelPos.z) === targetBlock.z) hitSameBlock = true;
       }
       if (hitSameBlock) {
         miningProgress += delta * 0.25;

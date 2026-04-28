@@ -32,14 +32,15 @@ export class ItemDropManager {
       drop.update(deltaTime, this.worldManager);
 
       // 2. 吸附逻辑：计算到中心点的距离
-      const dist = drop.mesh.position.distanceTo(playerCenter);
+      const dist = drop.group.position.distanceTo(playerCenter);
       
-      if (dist < 2.5) {
+      // 核心修复：仅在背包有空间时才触发吸附逻辑 (Bug 26)
+      if (dist < 2.5 && this.inventoryManager.canAddItem(drop.itemId)) {
         // 触发吸附：取消重力
         drop.isMagnetic = true;
         
         // 加速飞向中心点
-        drop.mesh.position.lerp(playerCenter, deltaTime * 8.0);
+        drop.group.position.lerp(playerCenter, deltaTime * 8.0);
       } else {
         drop.isMagnetic = false;
       }

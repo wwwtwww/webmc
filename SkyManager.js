@@ -88,13 +88,13 @@ export class SkyManager {
     // 计算太阳角度 (12:00 时在最高点)
     const angle = (normalizedTime * Math.PI * 2) - Math.PI / 2;
     this.directionalLight.position.set(
-      Math.cos(angle) * 50,
-      -Math.sin(angle) * 50, // 负号确保东升西落
+      -Math.cos(angle) * 50,
+      Math.abs(Math.sin(angle)) * 50, // 核心修复：夜间将光源翻转至天空 (Bug 28)
       20
     );
 
     // 动态调整太阳颜色
-    const sunHeight = -Math.sin(angle);
+    const sunHeight = Math.sin(angle);
     if (sunHeight > 0 && sunHeight < 0.3) {
       this.directionalLight.color.setHSL(0.1, 0.8, 0.7); // 暖色调
     } else {

@@ -97,8 +97,11 @@ export class WorldManager {
         this.markDirty(chunkX + 1, chunkZ);
         this.markDirty(chunkX, chunkZ - 1);
         this.markDirty(chunkX, chunkZ + 1);
-      }
-      chunk.applyGeometry(opaque, transparent);
+        this.markDirty(chunkX - 1, chunkZ - 1);
+        this.markDirty(chunkX + 1, chunkZ - 1);
+        this.markDirty(chunkX - 1, chunkZ + 1);
+        this.markDirty(chunkX + 1, chunkZ + 1);
+      }      chunk.applyGeometry(opaque, transparent);
     };
   }
 
@@ -126,16 +129,26 @@ export class WorldManager {
     if (chunk) {
       chunk.world.setBlock(lx, ly, lz, finalType);
 
+      // 核心修复：更严密的邻居脏标记逻辑 (Bug 24)
+      // 包含 4 个侧面和 4 个对角线邻居，确保 AO 阴影实时刷新
       this.markDirty(chunkX, chunkZ);
       if (lx === 0) this.markDirty(chunkX - 1, chunkZ);
       if (lx === this.chunkSize - 1) this.markDirty(chunkX + 1, chunkZ);
       if (lz === 0) this.markDirty(chunkX, chunkZ - 1);
       if (lz === this.chunkSize - 1) this.markDirty(chunkX, chunkZ + 1);
+      
+      if (lx === 0 && lz === 0) this.markDirty(chunkX - 1, chunkZ - 1);
+      if (lx === 0 && lz === this.chunkSize - 1) this.markDirty(chunkX - 1, chunkZ + 1);
+      if (lx === this.chunkSize - 1 && lz === 0) this.markDirty(chunkX + 1, chunkZ - 1);
+      if (lx === this.chunkSize - 1 && lz === this.chunkSize - 1) this.markDirty(chunkX + 1, chunkZ + 1);
     }
 
     // 始终异步持久化增量修改，确保非内存区块也能保存。使用 finalType 确保 Forced Air 标记不丢失。
-    saveChunkDelta(key, lx, ly, lz, finalType).catch(err => console.error("Save failed:", err));
+    // 核心修复：拦截无效高度的持久化请求 (Bug 14)
+    if (ly >= 0 && ly < this.chunkHeight) {
+      saveChunkDelta(key, lx, ly, lz, finalType).catch(err => console.error("Save failed:", err));
     }
+  }
   markDirty(chunkX, chunkZ) { this.dirtyChunks.add(`${chunkX},${chunkZ}`); }
 
   getHighestBlock(worldX, worldZ) {
@@ -186,9 +199,13 @@ export class WorldManager {
     const neighborR = getVoxels(chunkX + 1, chunkZ);
     const neighborB = getVoxels(chunkX, chunkZ - 1);
     const neighborF = getVoxels(chunkX, chunkZ + 1);
+    const neighborLB = getVoxels(chunkX - 1, chunkZ - 1);
+    const neighborLF = getVoxels(chunkX - 1, chunkZ + 1);
+    const neighborRB = getVoxels(chunkX + 1, chunkZ - 1);
+    const neighborRF = getVoxels(chunkX + 1, chunkZ + 1);
 
     // 核心修复：移除 transfer 数组！
-    // 不再转移 buffer 所有权，改用结构化克隆复制数据 (320KB 拷贝耗时极低)，
+    // 不再转移 buffer 所有权，改用结构化克隆复制数据 (约 500KB 拷贝耗时极低)，
     // 确保主线程的 chunk.world.data 不会变为 Detached 状态。
     worker.postMessage({ 
       chunkSize: this.chunkSize, chunkHeight: this.chunkHeight, 
@@ -196,7 +213,8 @@ export class WorldManager {
       deltas,
       voxels: {
         center,
-        neighborL, neighborR, neighborB, neighborF
+        neighborL, neighborR, neighborB, neighborF,
+        neighborLB, neighborLF, neighborRB, neighborRF
       }
     });
   }
@@ -215,6 +233,8 @@ export class WorldManager {
             this.markDirty(cx, cz);
             this.markDirty(cx - 1, cz); this.markDirty(cx + 1, cz);
             this.markDirty(cx, cz - 1); this.markDirty(cx, cz + 1);
+            this.markDirty(cx - 1, cz - 1); this.markDirty(cx + 1, cz - 1);
+            this.markDirty(cx - 1, cz + 1); this.markDirty(cx + 1, cz + 1);
           }
         }
       }

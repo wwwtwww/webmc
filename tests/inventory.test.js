@@ -7,8 +7,8 @@ describe('InventoryManager', () => {
     const first = inventory.addItem(4, 30);
     const second = inventory.addItem(4, 20);
 
-    expect(first).toBe(true);
-    expect(second).toBe(true);
+    expect(first).toBe(30);
+    expect(second).toBe(20);
     expect(inventory.slots[0]).toEqual({ id: 4, count: 50 });
   });
 

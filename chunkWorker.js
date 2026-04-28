@@ -59,19 +59,24 @@ function pseudoRandom(x, z) {
   return n - Math.floor(n);
 }
 
+// 核心修复：增加边界检查防止 1D 数组索引越界/环绕 (Bug 2)
 function growTree(data, x, y, z, pSize, chunkHeight) {
   const pSize2 = pSize * pSize, trunkH = 5;
+  const setVoxel = (vx, vy, vz, id) => {
+    if (vx < 0 || vx >= pSize || vy < 0 || vy >= chunkHeight || vz < 0 || vz >= pSize) return;
+    const idx = vy * pSize2 + vz * pSize + vx;
+    if (data[idx] === 0) data[idx] = id;
+  };
+
   for (let i = 0; i < trunkH; i++) {
-    const idx = (y + i) * pSize2 + z * pSize + x;
-    if (y + i < chunkHeight && data[idx] === 0) data[idx] = 4;
+    setVoxel(x, y + i, z, 4);
   }
   for (let ly = y + 3; ly <= y + 5; ly++) {
     for (let lz = z - 2; lz <= z + 2; lz++) {
       for (let lx = x - 2; lx <= x + 2; lx++) {
         const dist = Math.abs(lx - x) + Math.abs(ly - (y + 4)) + Math.abs(lz - z);
-        if (dist <= 3 && ly < chunkHeight) {
-          const idx = ly * pSize2 + lz * pSize + lx;
-          if (data[idx] === 0) data[idx] = 5;
+        if (dist <= 3) {
+          setVoxel(lx, ly, lz, 5);
         }
       }
     }
@@ -80,7 +85,10 @@ function growTree(data, x, y, z, pSize, chunkHeight) {
 
 self.onmessage = function(e) {
   const { voxels, chunkSize, chunkHeight, chunkX, chunkZ, version, needsGeneration, deltas } = e.data;
-  const pSize = chunkSize + 2, pSize2 = pSize * pSize;
+  
+  // 核心修复：将 Padding 从 1 增加到 2 (pSize = chunkSize + 4) 以容纳半径为 2 的树冠 (Bug 20)
+  const pad = 2;
+  const pSize = chunkSize + pad * 2, pSize2 = pSize * pSize;
   const localData = new Uint8Array(pSize * chunkHeight * pSize);
 
   let newVoxels = null;
@@ -89,8 +97,8 @@ self.onmessage = function(e) {
     // 1. 地形生成
     for (let z = 0; z < pSize; z++) {
       for (let x = 0; x < pSize; x++) {
-        const worldX = chunkX * chunkSize + x - 1;
-        const worldZ = chunkZ * chunkSize + z - 1;
+        const worldX = chunkX * chunkSize + x - pad;
+        const worldZ = chunkZ * chunkSize + z - pad;
 
         const distance = Math.sqrt(worldX * worldX + worldZ * worldZ);
         let factor = 1.0;
@@ -138,6 +146,7 @@ self.onmessage = function(e) {
           }
         }
 
+        // 核心修复：允许在所有区域（包括 Padding）通过确定性噪声发现树木 (Bug 22)
         if (biome === 'GRASS' && pseudoRandom(worldX, worldZ) < 0.01) {
           let surfaceY = -1;
           for (let y = chunkHeight - 1; y >= 0; y--) {
@@ -154,20 +163,35 @@ self.onmessage = function(e) {
       }
     }
   } else {
-    // 2. 从主线程传入的数据组装 Padding
-    const { center, neighborL, neighborR, neighborB, neighborF } = voxels;
+    // 2. 核心修复：组装 Padding 时包含 4 个对角线邻居，实现完美 AO (Bug 11)
+    const { 
+      center, 
+      neighborL, neighborR, neighborB, neighborF,
+      neighborLB, neighborLF, neighborRB, neighborRF 
+    } = voxels;
+
     for (let y = 0; y < chunkHeight; y++) {
       const yOff = y * pSize2;
       const vyOff = y * chunkSize * chunkSize;
+
+      // --- 中心块 ---
       for (let z = 0; z < chunkSize; z++) {
         for (let x = 0; x < chunkSize; x++) {
-          localData[yOff + (z + 1) * pSize + (x + 1)] = center[vyOff + z * chunkSize + x];
+          localData[yOff + (z + pad) * pSize + (x + pad)] = center[vyOff + z * chunkSize + x];
         }
       }
-      if (neighborL) for (let z = 0; z < chunkSize; z++) localData[yOff + (z + 1) * pSize + 0] = neighborL[vyOff + z * chunkSize + (chunkSize - 1)];
-      if (neighborR) for (let z = 0; z < chunkSize; z++) localData[yOff + (z + 1) * pSize + (chunkSize + 1)] = neighborR[vyOff + z * chunkSize + 0];
-      if (neighborB) for (let x = 0; x < chunkSize; x++) localData[yOff + 0 * pSize + (x + 1)] = neighborB[vyOff + (chunkSize - 1) * chunkSize + x];
-      if (neighborF) for (let x = 0; x < chunkSize; x++) localData[yOff + (chunkSize + 1) * pSize + (x + 1)] = neighborF[vyOff + 0 * chunkSize + x];
+
+      // --- 4 个侧面邻居 (仅拷贝靠近边界的 1 层即可，因为 re-mesh 只需 1 层 Padding 做 AO) ---
+      if (neighborL) for (let z = 0; z < chunkSize; z++) localData[yOff + (z + pad) * pSize + (pad - 1)] = neighborL[vyOff + z * chunkSize + (chunkSize - 1)];
+      if (neighborR) for (let z = 0; z < chunkSize; z++) localData[yOff + (z + pad) * pSize + (chunkSize + pad)] = neighborR[vyOff + z * chunkSize + 0];
+      if (neighborB) for (let x = 0; x < chunkSize; x++) localData[yOff + (pad - 1) * pSize + (x + pad)] = neighborB[vyOff + (chunkSize - 1) * chunkSize + x];
+      if (neighborF) for (let x = 0; x < chunkSize; x++) localData[yOff + (chunkSize + pad) * pSize + (x + pad)] = neighborF[vyOff + 0 * chunkSize + x];
+
+      // --- 4 个对角线邻居 ---
+      if (neighborLB) localData[yOff + (pad - 1) * pSize + (pad - 1)] = neighborLB[vyOff + (chunkSize - 1) * chunkSize + (chunkSize - 1)];
+      if (neighborLF) localData[yOff + (chunkSize + pad) * pSize + (pad - 1)] = neighborLF[vyOff + 0 * chunkSize + (chunkSize - 1)];
+      if (neighborRB) localData[yOff + (pad - 1) * pSize + (chunkSize + pad)] = neighborRB[vyOff + (chunkSize - 1) * chunkSize + 0];
+      if (neighborRF) localData[yOff + (chunkSize + pad) * pSize + (chunkSize + pad)] = neighborRF[vyOff + 0 * chunkSize + 0];
     }
   }
 
@@ -175,7 +199,7 @@ self.onmessage = function(e) {
   if (deltas) {
     for (const dKey in deltas) {
       const [lx, ly, lz] = dKey.split('_').map(Number);
-      localData[ly * pSize2 + (lz + 1) * pSize + (lx + 1)] = deltas[dKey];
+      localData[ly * pSize2 + (lz + pad) * pSize + (lx + pad)] = deltas[dKey];
     }
   }
 
@@ -185,13 +209,13 @@ self.onmessage = function(e) {
     for (let y = 0; y < chunkHeight; y++) {
       for (let z = 0; z < chunkSize; z++) {
         for (let x = 0; x < chunkSize; x++) {
-          newVoxels[y * chunkSize * chunkSize + z * chunkSize + x] = localData[y * pSize2 + (z + 1) * pSize + (x + 1)];
+          newVoxels[y * chunkSize * chunkSize + z * chunkSize + x] = localData[y * pSize2 + (z + pad) * pSize + (x + pad)];
         }
       }
     }
   }
 
-  // 5. 网格化
+  // 5. 网格化渲染逻辑
   const channels = { opaque: { positions: [], normals: [], uvs: [], colors: [], indices: [] }, transparent: { positions: [], normals: [], uvs: [], colors: [], indices: [] } };
   const isOcc = (dx, dy, dz, cx, cy, cz) => {
     const ny = cy + dy;
@@ -203,7 +227,7 @@ self.onmessage = function(e) {
   for (let y = 0; y < chunkHeight; y++) {
     for (let z = 0; z < chunkSize; z++) {
       for (let x = 0; x < chunkSize; x++) {
-        const cx = x + 1, cz = z + 1;
+        const cx = x + pad, cz = z + pad;
         const voxel = localData[y * pSize2 + cz * pSize + cx];
         if (voxel === 0 || voxel === 255) continue;
 

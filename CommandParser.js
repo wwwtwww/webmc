@@ -35,9 +35,18 @@ export class CommandParser {
         return this.handleGive(args);
       case '/tp':
         return this.handleTeleport(args);
+      case '/clear-mobs':
+        return this.handleClearMobs();
       default:
         return `未知指令: ${command}`;
     }
+  }
+
+  handleClearMobs() {
+    if (!this.ctx.mobManager) return '错误: 生物管理器未就绪';
+    const count = this.ctx.mobManager.mobs.size;
+    this.ctx.mobManager.clearAll();
+    return `已清理 ${count} 个生物`;
   }
 
   handleTime(args) {
@@ -62,13 +71,18 @@ export class CommandParser {
     const amount = parseInt(args[1] || 1);
     if (isNaN(id) || isNaN(amount) || amount <= 0) return '用法: /give [id] [数量(必须为正)]';
     
+    // 核心修复：校验物品 ID 是否存在 (Bug 27)
+    if (!this.ctx.blockData[id]) {
+      return `错误: 物品 ID ${id} 不存在。`;
+    }
+
     const added = this.ctx.inventoryManager.addItem(id, amount);
     this.ctx.onUpdateUI(); // 通知刷新界面
     
-    if (added) {
-      return `已给予物品 ID:${id} 数量:${amount}`;
+    if (added > 0) {
+      return `已给予物品 ${this.ctx.blockData[id].name} (ID:${id}) 数量:${added}`;
     } else {
-      return `警告: 背包已满，部分或全部物品未被给予。`;
+      return `警告: 背包已满，物品未被给予。`;
     }
   }
 
@@ -76,14 +90,16 @@ export class CommandParser {
     // 简易版：/tp [高度位移] 或 /tp [x] [y] [z]
     if (args.length === 1) {
       const y = parseFloat(args[0]);
+      if (isNaN(y)) return '用法: /tp [高度]';
       this.ctx.camera.position.y += y;
       return `已向上位移 ${y} 格`;
     } else if (args.length === 3) {
       const x = parseFloat(args[0]);
       const y = parseFloat(args[1]);
       const z = parseFloat(args[2]);
+      if (isNaN(x) || isNaN(y) || isNaN(z)) return '用法: /tp [x] [y] [z]';
       this.ctx.camera.position.set(x, y, z);
-      return `已传送到 ${x}, ${y}, ${z}`;
+      return `已传送到 ${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}`;
     }
     return '用法: /tp [高度] 或 /tp [x] [y] [z]';
   }

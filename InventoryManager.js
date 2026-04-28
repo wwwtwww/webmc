@@ -46,6 +46,18 @@ export class InventoryManager {
   }
 
   /**
+   * 检查背包是否还能存入至少一个该物品 (Bug 26)
+   */
+  canAddItem(id) {
+    for (let i = 0; i < this.size; i++) {
+      const item = this.slots[i];
+      if (item === null) return true;
+      if (item.id === id && item.count < this.maxStackSize) return true;
+    }
+    return false;
+  }
+
+  /**
    * 从指定槽位扣除物品
    * @param {number} slotIndex 槽位索引
    * @param {number} amount 扣除数量

@@ -43,7 +43,7 @@ export class Pathfinder {
                     continue;
                 }
 
-                if (!this.isTraversable(neighbor.x, neighbor.y, neighbor.z, worldManager)) {
+                if (!this.isTraversable(neighbor.x, neighbor.y, neighbor.z, worldManager, current)) {
                     continue;
                 }
 
@@ -85,17 +85,19 @@ export class Pathfinder {
     }
 
     static getNeighbors(node) {
-        return [
-            { x: node.x + 1, y: node.y, z: node.z },
-            { x: node.x - 1, y: node.y, z: node.z },
-            { x: node.x, y: node.y + 1, z: node.z },
-            { x: node.x, y: node.y - 1, z: node.z },
-            { x: node.x, y: node.y, z: node.z + 1 },
-            { x: node.x, y: node.y, z: node.z - 1 }
-        ];
+        const neighbors = [];
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dz = -1; dz <= 1; dz++) {
+                    if (dx === 0 && dy === 0 && dz === 0) continue;
+                    neighbors.push({ x: node.x + dx, y: node.y + dy, z: node.z + dz });
+                }
+            }
+        }
+        return neighbors;
     }
 
-    static isTraversable(x, y, z, worldManager) {
+    static isTraversable(x, y, z, worldManager, currentNode = null) {
         const blockType = worldManager.getBlock(x, y, z);
         const blockAbove = worldManager.getBlock(x, y + 1, z);
         const blockBelow = worldManager.getBlock(x, y - 1, z);
@@ -103,11 +105,41 @@ export class Pathfinder {
         // 1. (x, y, z) is air/water
         const currentOk = (blockType === 0 || blockType === 3);
         // 2. (x, y-1, z) is solid
-        const belowOk = (blockBelow !== 0 && blockBelow !== 3);
+        let belowOk = (blockBelow !== 0 && blockBelow !== 3);
+        
+        if (!belowOk && currentNode && x === currentNode.x && z === currentNode.z && y === currentNode.y + 1) {
+            const jumpOffBlock = worldManager.getBlock(currentNode.x, currentNode.y - 1, currentNode.z);
+            if (jumpOffBlock !== 0 && jumpOffBlock !== 3) {
+                belowOk = true;
+            }
+        }
+        
         // 3. (x, y+1, z) is air/water (2-block height clearance)
         const aboveOk = (blockAbove === 0 || blockAbove === 3);
         
-        return currentOk && belowOk && aboveOk;
+        // 4. 对角线穿角检测 (Bug 39)
+        let diagonalOk = true;
+        if (currentNode) {
+            const dx = Math.abs(x - currentNode.x);
+            const dz = Math.abs(z - currentNode.z);
+            if (dx === 1 && dz === 1) {
+                // 检查两个相邻的水平格子
+                const corner1 = worldManager.getBlock(currentNode.x, currentNode.y, z);
+                const corner2 = worldManager.getBlock(x, currentNode.y, currentNode.z);
+                const corner1Above = worldManager.getBlock(currentNode.x, currentNode.y + 1, z);
+                const corner2Above = worldManager.getBlock(x, currentNode.y + 1, currentNode.z);
+                
+                // 如果任意一个角落（或其上方，因为需要两格高）是实体墙，则判定被卡住无法斜穿
+                const c1Blocked = (corner1 !== 0 && corner1 !== 3) || (corner1Above !== 0 && corner1Above !== 3);
+                const c2Blocked = (corner2 !== 0 && corner2 !== 3) || (corner2Above !== 0 && corner2Above !== 3);
+                
+                if (c1Blocked || c2Blocked) {
+                    diagonalOk = false;
+                }
+            }
+        }
+        
+        return currentOk && belowOk && aboveOk && diagonalOk;
     }
 
     static reconstructPath(node) {
