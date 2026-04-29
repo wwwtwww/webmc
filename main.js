@@ -855,9 +855,3 @@ function animate() {
   prevTime = time; renderer.render(scene, camera);
 }
 animate();
-cene, camera);
-}
-animate();
-
-}
-animate();
