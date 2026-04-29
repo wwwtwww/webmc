@@ -57,6 +57,10 @@ function updateHpUI() {
 }
 
 function takePlayerDamage(amount) {
+  // Bug 44: 全局无敌时间 (I-Frame)
+  if (performance.now() - lastDamageTime < 1000) return;
+  lastDamageTime = performance.now();
+
   playerHp -= amount;
   updateHpUI();
   
@@ -219,6 +223,34 @@ function toggleInventory() {
   if (!hasSpawned || isConsoleOpen) return; 
 
   if (isInventoryOpen) {
+    // 核心修复：关闭背包时退回所有物品 (Bug 5)
+    // 1. 退回鼠标上的物品
+    if (inventoryUI.holdingItem) {
+      const added = inventoryManager.addItem(inventoryUI.holdingItem.id, inventoryUI.holdingItem.count);
+      inventoryUI.holdingItem.count -= added;
+      if (inventoryUI.holdingItem.count <= 0) inventoryUI.holdingItem = null;
+    }
+    // 2. 退回 2x2 合成格中的物品
+    for (let i = 0; i < 4; i++) {
+      const item = inventoryUI.craftingSlots[i];
+      if (item) {
+        const added = inventoryManager.addItem(item.id, item.count);
+        item.count -= added;
+        if (item.count <= 0) inventoryUI.craftingSlots[i] = null;
+      }
+    }
+    
+    // 如果依然有剩余（背包全满），强制保留背包打开
+    if (inventoryUI.holdingItem || inventoryUI.craftingSlots.some(s => s !== null)) {
+      return;
+    }
+
+    inventoryUI.updateDragCursor();
+    isInventoryOpen = false;
+    inventoryUI.uiContainer.style.display = 'none';
+    initHotbarUI();
+
+    instructions.style.display = 'block';
     controls.lock(); 
   } else {
     isOpeningInventory = true;
@@ -440,6 +472,9 @@ controls.addEventListener('lock', () => {
     
     // 如果依然有剩余（背包全满），强制重新打开背包提示玩家
     if (inventoryUI.holdingItem || inventoryUI.craftingSlots.some(s => s !== null)) {
+      if (typeof addConsoleMsg === 'function') {
+        addConsoleMsg("背包已满，请先丢弃或使用物品后再关闭！", "red");
+      }
       isOpeningInventory = true;
       controls.unlock();
       return;
@@ -553,7 +588,7 @@ document.addEventListener('mousedown', (e) => {
       // 寻找对应的 Mob 实例
       for (const mob of mobManager.mobs.values()) {
         if (mob.group === hitGroup || mob.group === hitMob.object.parent.parent) {
-          mob.takeDamage(2);
+          mob.takeDamage(2, camera.position);
           audioManager.playSound('dig', 0.5); // 借用挖掘声作为打击反馈
           return; // 攻击了生物就不再挖掘方块
         }
@@ -593,9 +628,10 @@ document.addEventListener('mousedown', (e) => {
         if (!isOverlapping && mobManager) {
           for (const mob of mobManager.mobs.values()) {
             if (mob.isDead) continue;
+            const mobHeight = mob.type === 'zombie' ? 1.8 : 0.8;
             const mobAABB = {
               minX: mob.group.position.x - 0.35, maxX: mob.group.position.x + 0.35,
-              minY: mob.group.position.y, maxY: mob.group.position.y + 0.8,
+              minY: mob.group.position.y, maxY: mob.group.position.y + mobHeight,
               minZ: mob.group.position.z - 0.35, maxZ: mob.group.position.z + 0.35
             };
             if (
@@ -726,10 +762,28 @@ function animate() {
     for (const mob of mobManager.mobs.values()) {
       if (mob.type === 'zombie' && !mob.isDead) {
         const distance = mob.group.position.distanceTo(camera.position);
-        if (distance < 1.2 && performance.now() - lastDamageTime > 1000) {
+        if (distance < 1.2) {
+          const oldTime = lastDamageTime;
           takePlayerDamage(2);
-          lastDamageTime = performance.now();
-          audioManager.playSound('dig', 1.0); // 暂用挖掘声作为伤害音效
+          if (lastDamageTime !== oldTime) {
+            audioManager.playSound('dig', 1.0); // 暂用挖掘声作为伤害音效
+          }
+        }
+      }
+    }
+
+    // 窒息伤害逻辑 (Bug 43)
+    if (!isFlying && hasSpawned) {
+      const headX = Math.floor(camera.position.x);
+      const headY = Math.floor(camera.position.y);
+      const headZ = Math.floor(camera.position.z);
+      const headVoxel = worldManager.getBlock(headX, headY, headZ);
+      // 如果头部位于实体方块内，造成窒息伤害
+      if (headVoxel !== 0 && headVoxel !== 3) {
+        const oldTime = lastDamageTime;
+        takePlayerDamage(1);
+        if (lastDamageTime !== oldTime) {
+          audioManager.playSound('dig', 0.5); // 窒息也播放一个受击音效
         }
       }
     }

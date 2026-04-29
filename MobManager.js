@@ -53,7 +53,7 @@ export class MobManager {
     const sy = this.worldManager.getHighestBlock(sx, sz);
     
     if (sy !== null) {
-      const time = this.skyManager ? this.skyManager.time : 12; // 默认中午
+      const time = this.skyManager ? this.skyManager.timeOfDay : 12; // 默认中午
       const isNight = time > 18 || time < 6;
       
       let spawnType = null;

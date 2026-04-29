@@ -39,19 +39,50 @@ export class Chunk {
   _updateMeshGeometry(mesh, data) {
     const { positions, normals, uvs, colors, indices } = data;
     const geometry = mesh.geometry;
-    if (geometry.index) geometry.setIndex(null);
-    Object.keys(geometry.attributes).forEach(key => geometry.deleteAttribute(key));
-    if (positions && positions.length > 0) {
-      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-      geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-      geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-      geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-      geometry.computeBoundingSphere();
-      mesh.visible = true;
-    } else {
+
+    if (!positions || positions.length === 0) {
       mesh.visible = false;
+      return;
     }
+
+    // 1. 更新或创建顶点属性
+    const updateAttr = (name, newData, itemSize) => {
+      let attr = geometry.getAttribute(name);
+      // 如果属性不存在，或者现有 Buffer 长度不足，则重新创建
+      if (!attr || attr.array.length < newData.length) {
+        // 创建一个略大的 Buffer (增加 20% 冗余) 以减少后续可能的重新分配
+        const buffer = new newData.constructor(Math.floor(newData.length * 1.2));
+        buffer.set(newData);
+        attr = new THREE.BufferAttribute(buffer, itemSize);
+        geometry.setAttribute(name, attr);
+      } else {
+        // 复用现有 Buffer
+        attr.array.set(newData);
+        attr.needsUpdate = true;
+      }
+    };
+
+    updateAttr('position', positions, 3);
+    updateAttr('normal', normals, 3);
+    updateAttr('uv', uvs, 2);
+    updateAttr('color', colors, 3);
+
+    // 2. 更新索引
+    let indexAttr = geometry.getIndex();
+    if (!indexAttr || indexAttr.array.length < indices.length) {
+      const indexBuffer = new indices.constructor(Math.floor(indices.length * 1.2));
+      indexBuffer.set(indices);
+      indexAttr = new THREE.BufferAttribute(indexBuffer, 1);
+      geometry.setIndex(indexAttr);
+    } else {
+      indexAttr.array.set(indices);
+      indexAttr.needsUpdate = true;
+    }
+
+    // 3. 关键：设置渲染范围，防止渲染 Buffer 中的冗余数据
+    geometry.setDrawRange(0, indices.length);
+    geometry.computeBoundingSphere();
+    mesh.visible = true;
   }
 
   dispose() {

@@ -44,6 +44,8 @@
 *   [x] **Bug 38: 区块加载/卸载没有同步刷新对角线 AO 邻居** - 已在 `WorldManager.update()` 中新区块生成和卸载的逻辑中补全了对角线 4 个相邻区块的 `markDirty` 调用，确保 AO 阴影完整刷新。
 *   [x] **Bug 39: A* 寻路允许斜向“穿角”** - 已在 `Pathfinder.isTraversable()` 中添加对角线运动（dx=1 且 dz=1）时对两侧相邻方块的碰撞体积校验，避免生物挤过墙角缝隙。
 
+*   [x] **Bug 45: WebGL Attribute Buffer 频繁重建导致的 GPU 阻塞** - 已在 `WorldManager.js` 的 `Chunk._updateMeshGeometry` 中实现 `BufferAttribute` 复用逻辑，通过 `setDrawRange` 控制渲染范围，彻底避免了频繁的 GPU 显存重新分配与管线停顿。
+
 ---
 
 ## 🔴 未修复缺陷 (Unresolved Bugs)
@@ -53,7 +55,6 @@
 *   [ ] **Bug 42: 背包满时关闭 UI 的逻辑死锁隐患** - 在 `main.js` 的 `toggleInventory` 和 `controls.lock` 监听器中，如果玩家背包已满且鼠标/合成格中仍有物品，代码会强制中断关闭操作或重新打开背包。虽然这是为了防止物品丢失，但缺乏 UI 提示，且可能导致玩家在尝试切回游戏时反复被弹回背包界面。
 *   [ ] **Bug 43: 玩家被埋入方块时缺乏窒息伤害** - 物理引擎虽然能防止玩家走入墙体，但通过 `/tp` 指令或在未加载区块生成时，玩家仍有可能处于实体方块内部。目前系统没有检测这种状态并扣除生命值（窒息）的逻辑。
 *   [ ] **Bug 44: 多生物同时攻击玩家时缺乏全局无敌时间 (I-Frame)** - 僵尸的伤害逻辑在 `main.js` 的循环中独立计算。如果多个僵尸重叠在玩家位置，它们会各自独立触发 `takePlayerDamage`，导致玩家生命值瞬间清空。通常应引入受击后的短暂全局无敌时间。
-*   [ ] **Bug 45: WebGL Attribute Buffer 频繁重建导致的 GPU 阻塞** - 在 `WorldManager.js` 的 `Chunk._updateMeshGeometry` 中，更新区块网格时直接使用 `geometry.deleteAttribute` 后跟随 `new THREE.BufferAttribute`。这种操作会强制销毁 GPU 上的旧 Buffer 并重新申请显存，导致显存碎片化及严重的渲染管线停顿。建议预分配固定长度 Buffer 或复用属性数组并设置 `needsUpdate = true`。
 
 ---
 

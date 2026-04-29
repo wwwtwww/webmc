@@ -44,7 +44,7 @@
 
 ### 性能极致优化 (短期)
 - [ ] **射线检测重构**：优化 `animate` 循环，采用区块边界 DDA 算法替代常规射线，降低 CPU 开销。
-- [ ] **WebGL 属性缓冲区优化 (Bug 45)**：在 `Chunk._updateMeshGeometry` 中实现 BufferAttribute 复用，使用 `.set()` 更新数据而非频繁销毁重建，解决 GPU 阻塞与显存碎片问题。
+- [x] **WebGL 属性缓冲区优化 (Bug 45)**：在 `Chunk._updateMeshGeometry` 中实现 BufferAttribute 复用，使用 `.set()` 更新数据而非频繁销毁重建，解决 GPU 阻塞与显存碎片问题。
 - [ ] **内存碎片整理**：引入 Chunk Buffer 池化技术，使用 `setDrawRange` 优化显存数据交换。
 - [ ] **寻路算法调优**：在 `Pathfinder.js` 中引入 `BinaryHeap` 二分堆，将寻路开销从 O(N) 降至 O(log N)。
 - [ ] **Greedy Meshing**：重构网格合并算法，通过合并同类表面减少 60% 以上的渲染顶点数量。

@@ -27,8 +27,9 @@ export class Mob {
       this.hp = 20;
       this.maxHp = 20;
       this.moveSpeed = 3.5;
-      this.originalColor = new THREE.Color(0x2d4d2d);
-      this.snoutColor = new THREE.Color(0x2d4d2d);
+      // 核心修复: 改用更亮/更明显的绿色，防止在夜间的阴影中彻底隐形
+      this.originalColor = new THREE.Color(0x4caf50); 
+      this.snoutColor = new THREE.Color(0x388e3c);
     } else {
       this.hp = 10;
       this.maxHp = 10;
@@ -50,29 +51,88 @@ export class Mob {
   }
 
   initModel() {
-    // 简单的长方体身体
-    const bodyGeo = new THREE.BoxGeometry(0.8, 0.6, 1.2);
-    const body = new THREE.Mesh(bodyGeo, this.material);
-    body.position.y = 0.6; 
-    this.group.add(body);
+    if (this.type === 'zombie') {
+      // 人形外观 (Zombie)
+      // 身体
+      const bodyGeo = new THREE.BoxGeometry(0.5, 0.75, 0.25);
+      const body = new THREE.Mesh(bodyGeo, this.material);
+      body.position.y = 1.125; 
+      this.group.add(body);
 
-    // 头部
-    const headGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-    const head = new THREE.Mesh(headGeo, this.material);
-    head.position.set(0, 0.8, 0.7);
-    this.group.add(head);
+      // 头部
+      const headGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+      const head = new THREE.Mesh(headGeo, this.material);
+      head.position.set(0, 1.75, 0);
+      
+      // 添加僵尸眼睛，明确标示正面朝向 (+Z 方向)
+      const eyeGeo = new THREE.BoxGeometry(0.3, 0.1, 0.05);
+      const eyeMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+      const eyes = new THREE.Mesh(eyeGeo, eyeMat);
+      eyes.position.set(0, 0.05, 0.26);
+      head.add(eyes);
+      
+      this.group.add(head);
 
-    // 鼻子
-    const snoutGeo = new THREE.BoxGeometry(0.2, 0.15, 0.1);
-    const snout = new THREE.Mesh(snoutGeo, this.snoutMaterial);
-    snout.position.set(0, 0.75, 0.96);
-    this.group.add(snout);
+      // 四肢的动画锚点
+      this.leftArm = new THREE.Group();
+      this.leftArm.position.set(0.35, 1.5, 0);
+      const armGeo = new THREE.BoxGeometry(0.2, 0.75, 0.2);
+      const lArmMesh = new THREE.Mesh(armGeo, this.material);
+      lArmMesh.position.y = -0.375; // 锚点在肩膀，Mesh 往下偏
+      this.leftArm.add(lArmMesh);
+      // 僵尸手臂默认前伸 (向 +Z 方向，使用 -Math.PI/2)
+      this.leftArm.rotation.x = -Math.PI / 2;
+      this.group.add(this.leftArm);
+
+      this.rightArm = new THREE.Group();
+      this.rightArm.position.set(-0.35, 1.5, 0);
+      const rArmMesh = new THREE.Mesh(armGeo, this.material);
+      rArmMesh.position.y = -0.375;
+      this.rightArm.add(rArmMesh);
+      this.rightArm.rotation.x = -Math.PI / 2;
+      this.group.add(this.rightArm);
+
+      this.leftLeg = new THREE.Group();
+      this.leftLeg.position.set(0.15, 0.75, 0);
+      const legGeo = new THREE.BoxGeometry(0.2, 0.75, 0.2);
+      const lLegMesh = new THREE.Mesh(legGeo, this.material);
+      lLegMesh.position.y = -0.375;
+      this.leftLeg.add(lLegMesh);
+      this.group.add(this.leftLeg);
+
+      this.rightLeg = new THREE.Group();
+      this.rightLeg.position.set(-0.15, 0.75, 0);
+      const rLegMesh = new THREE.Mesh(legGeo, this.material);
+      rLegMesh.position.y = -0.375;
+      this.rightLeg.add(rLegMesh);
+      this.group.add(this.rightLeg);
+
+      this.walkAnimTime = 0;
+    } else {
+      // 简单的长方体身体 (猪)
+      const bodyGeo = new THREE.BoxGeometry(0.8, 0.6, 1.2);
+      const body = new THREE.Mesh(bodyGeo, this.material);
+      body.position.y = 0.6; 
+      this.group.add(body);
+
+      // 头部
+      const headGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+      const head = new THREE.Mesh(headGeo, this.material);
+      head.position.set(0, 0.8, 0.7);
+      this.group.add(head);
+
+      // 鼻子
+      const snoutGeo = new THREE.BoxGeometry(0.2, 0.15, 0.1);
+      const snout = new THREE.Mesh(snoutGeo, this.snoutMaterial);
+      snout.position.set(0, 0.75, 0.96);
+      this.group.add(snout);
+    }
   }
 
   /**
    * 受击逻辑
    */
-  takeDamage(amount) {
+  takeDamage(amount, attackerPos = null) {
     if (this.isDead) return;
 
     this.hp -= amount;
@@ -89,8 +149,22 @@ export class Mob {
       }
     }, 200);
 
-    // 3. 击退效果 (简单地向后方跳一下)
-    this.velocity.y = 4.0;
+    // 3. 击退效果
+    this.velocity.y = 5.0;
+    if (attackerPos) {
+      const dx = this.group.position.x - attackerPos.x;
+      const dz = this.group.position.z - attackerPos.z;
+      const dist = Math.sqrt(dx*dx + dz*dz);
+      if (dist > 0.01) {
+        this.velocity.x = (dx / dist) * 8.0;
+        this.velocity.z = (dz / dist) * 8.0;
+      }
+    } else {
+      const backward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.rotation);
+      this.velocity.x = backward.x * 5.0;
+      this.velocity.z = backward.z * 5.0;
+    }
+    this.knockbackTimer = 0.4;
 
     // 4. 死亡判定
     if (this.hp <= 0) {
@@ -185,16 +259,43 @@ export class Mob {
       // 核心修复：弧度环绕补正，确保选择最短旋转路径 (Bug 31)
       angleDiff = ((angleDiff + Math.PI) % (Math.PI * 2) + (Math.PI * 2)) % (Math.PI * 2) - Math.PI;
       
-      this.rotation += angleDiff * delta * 2;
+      // 显著提高旋转速度 (从 2 提高到 10)，确保僵尸能快速转身面向玩家
+      this.rotation += angleDiff * delta * 10;
       this.group.rotation.y = this.rotation;
 
-      if (this.state === 'walking' || this.state === 'chasing') {
+      if (this.knockbackTimer > 0) {
+        this.knockbackTimer -= delta;
+        // 击退期间阻尼衰减水平速度，不应用 AI 的移动
+        this.velocity.x -= this.velocity.x * 5.0 * delta;
+        this.velocity.z -= this.velocity.z * 5.0 * delta;
+        
+        // 击退期间保持腿部静止
+        if (this.type === 'zombie' && this.leftLeg) {
+          this.leftLeg.rotation.x = 0;
+          this.rightLeg.rotation.x = 0;
+        }
+      } else if (this.state === 'walking' || this.state === 'chasing') {
         const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.rotation);
         this.velocity.x = forward.x * this.moveSpeed;
         this.velocity.z = forward.z * this.moveSpeed;
+
+        if (this.type === 'zombie' && this.leftLeg) {
+          this.walkAnimTime = (this.walkAnimTime || 0) + delta * this.moveSpeed * 2.5;
+          this.leftLeg.rotation.x = Math.sin(this.walkAnimTime) * 0.8;
+          this.rightLeg.rotation.x = Math.sin(this.walkAnimTime + Math.PI) * 0.8;
+          this.leftArm.rotation.x = -Math.PI / 2 + Math.sin(this.walkAnimTime) * 0.1;
+          this.rightArm.rotation.x = -Math.PI / 2 + Math.sin(this.walkAnimTime + Math.PI) * 0.1;
+        }
       } else {
         this.velocity.x = 0;
         this.velocity.z = 0;
+
+        if (this.type === 'zombie' && this.leftLeg) {
+          this.leftLeg.rotation.x = 0;
+          this.rightLeg.rotation.x = 0;
+          this.leftArm.rotation.x = -Math.PI / 2;
+          this.rightArm.rotation.x = -Math.PI / 2;
+        }
       }
     } else {
       // 死亡后停止水平移动
@@ -209,7 +310,7 @@ export class Mob {
     
     // --- 核心修复：基于 AABB 的生物碰撞系统 ---
     const radius = 0.35;
-    const height = 0.8;
+    const height = this.type === 'zombie' ? 1.8 : 0.8;
     
     const checkMobCollision = (pos) => {
       const minX = Math.floor(pos.x - radius), maxX = Math.floor(pos.x + radius);

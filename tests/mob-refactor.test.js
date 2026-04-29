@@ -18,7 +18,7 @@ describe('Mob Refactor', () => {
     expect(mob.hp).toBe(20);
     expect(mob.maxHp).toBe(20);
     expect(mob.moveSpeed).toBe(3.5);
-    expect(mob.originalColor.getHex()).toBe(0x2d4d2d);
+    expect(mob.originalColor.getHex()).toBe(0x4caf50);
   });
 
   it('enters chasing state when zombie is near player', () => {

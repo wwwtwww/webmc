@@ -1,3 +1,5 @@
+import * as THREE from 'three';
+
 /**
  * CommandParser.js
  * 解析并执行开发者控制台指令
@@ -37,9 +39,36 @@ export class CommandParser {
         return this.handleTeleport(args);
       case '/clear-mobs':
         return this.handleClearMobs();
+      case '/spawn':
+        return this.handleSpawnMob(args);
       default:
         return `未知指令: ${command}`;
     }
+  }
+
+  handleSpawnMob(args) {
+    if (!this.ctx.mobManager) return '错误: 生物管理器未就绪';
+    
+    const type = args[0] ? args[0].toLowerCase() : 'zombie';
+    if (type !== 'zombie' && type !== 'pig') {
+      return `错误: 未知生物类型 '${type}'。可选: zombie, pig`;
+    }
+
+    const pos = this.ctx.camera.position.clone();
+    
+    // 在玩家视线前方 3 格处生成
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.ctx.camera.quaternion);
+    pos.add(dir.multiplyScalar(3));
+    
+    // 尽量生成在地面上，防止卡墙里
+    const sy = this.ctx.mobManager.worldManager.getHighestBlock(pos.x, pos.z);
+    if (sy !== null) {
+      pos.y = sy + 1;
+    }
+    
+    this.ctx.mobManager.spawn(type, pos);
+    
+    return `已在前方生成 1 只 ${type === 'zombie' ? '僵尸' : '猪'}`;
   }
 
   handleClearMobs() {
