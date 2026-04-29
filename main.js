@@ -76,6 +76,18 @@ function takePlayerDamage(amount) {
     // 玩家死亡：重置位置并恢复生命
     playerHp = maxPlayerHp;
     updateHpUI();
+    
+    // 核心修复: 死亡清空背包并同步 UI (Bug 70, Bug 73)
+    for (let i = 0; i < inventoryManager.size; i++) {
+      const item = inventoryManager.slots[i];
+      if (item) {
+        itemDropManager.spawn(camera.position.x, camera.position.y, camera.position.z, item.id, item.count);
+      }
+    }
+    inventoryManager.slots.fill(null);
+    initHotbarUI();
+    if (isInventoryOpen) inventoryUI.render(inventoryManager);
+
     hasSpawned = false; // 触发重新寻找安全出生点
     camera.position.set(spawnX, 120, spawnZ);
     velocity.set(0, 0, 0);
@@ -129,6 +141,7 @@ function toggleConsole() {
 }
 
 consoleInput.addEventListener('keydown', (e) => {
+  e.stopPropagation(); // 核心修复: 防止输入指令时触发全局热键 (Bug 63)
   if (e.key === 'Enter') {
     const input = consoleInput.value;
     if (input && commandParser) {
@@ -198,13 +211,18 @@ function handleResultClick() {
   const result = inventoryUI.craftingResult;
   const holding = inventoryUI.holdingItem;
 
-  if (!holding || (holding.id === result.id && holding.count + result.count <= 64)) {
+  // 核心修复: 如果手持物品为空，或者手持物品与产出一致且未达到堆叠上限 (Bug 57)
+  if (!holding || (holding.id === result.id && holding.count < 64)) {
     if (!holding) {
       inventoryUI.holdingItem = { ...result };
     } else {
+      // 允许堆叠，但产出固定作为一个整体取出 (符合 Minecraft 逻辑，产出通常是固定的 1 或 4 个)
+      // 如果 holding.count + result.count > 64，则说明由于空间不足无法取出产出
+      if (holding.count + result.count > 64) return;
       inventoryUI.holdingItem.count += result.count;
     }
 
+    // 消耗合成材料
     for (let i = 0; i < 4; i++) {
       if (inventoryUI.craftingSlots[i]) {
         inventoryUI.craftingSlots[i].count--;
@@ -219,30 +237,47 @@ function handleResultClick() {
   }
 }
 
+function returnHeldAndCraftingItems() {
+  // 1. 退回鼠标上的物品
+  if (inventoryUI.holdingItem) {
+    const added = inventoryManager.addItem(inventoryUI.holdingItem.id, inventoryUI.holdingItem.count);
+    inventoryUI.holdingItem.count -= added;
+    if (inventoryUI.holdingItem.count <= 0) inventoryUI.holdingItem = null;
+  }
+  // 2. 退回 2x2 合成格中的物品
+  for (let i = 0; i < 4; i++) {
+    const item = inventoryUI.craftingSlots[i];
+    if (item) {
+      const added = inventoryManager.addItem(item.id, item.count);
+      item.count -= added;
+      if (item.count <= 0) inventoryUI.craftingSlots[i] = null;
+    }
+  }
+}
+
 function toggleInventory() {
   if (!hasSpawned || isConsoleOpen) return; 
 
   if (isInventoryOpen) {
-    // 核心修复：关闭背包时退回所有物品 (Bug 5)
-    // 1. 退回鼠标上的物品
-    if (inventoryUI.holdingItem) {
-      const added = inventoryManager.addItem(inventoryUI.holdingItem.id, inventoryUI.holdingItem.count);
-      inventoryUI.holdingItem.count -= added;
-      if (inventoryUI.holdingItem.count <= 0) inventoryUI.holdingItem = null;
-    }
-    // 2. 退回 2x2 合成格中的物品
-    for (let i = 0; i < 4; i++) {
-      const item = inventoryUI.craftingSlots[i];
-      if (item) {
-        const added = inventoryManager.addItem(item.id, item.count);
-        item.count -= added;
-        if (item.count <= 0) inventoryUI.craftingSlots[i] = null;
-      }
-    }
+    // 核心修复：调用统一的退回逻辑 (Bug 62)
+    returnHeldAndCraftingItems();
     
-    // 如果依然有剩余（背包全满），强制保留背包打开
+    // 核心修复: 如果依然有剩余（背包全满），将物品丢出 (Bug 76)
     if (inventoryUI.holdingItem || inventoryUI.craftingSlots.some(s => s !== null)) {
-      return;
+      if (typeof addConsoleMsg === 'function') {
+        addConsoleMsg("背包已满，剩余物品已丢出！", "yellow");
+      }
+      if (inventoryUI.holdingItem) {
+        itemDropManager.spawn(camera.position.x, camera.position.y, camera.position.z, inventoryUI.holdingItem.id, inventoryUI.holdingItem.count);
+        inventoryUI.holdingItem = null;
+      }
+      for (let i = 0; i < 4; i++) {
+        const item = inventoryUI.craftingSlots[i];
+        if (item) {
+          itemDropManager.spawn(camera.position.x, camera.position.y, camera.position.z, item.id, item.count);
+          inventoryUI.craftingSlots[i] = null;
+        }
+      }
     }
 
     inventoryUI.updateDragCursor();
@@ -336,6 +371,7 @@ function updateHotbarUI() {
 }
 
 initHotbarUI();
+initHUD();
 updateHpUI();
 
 window.addEventListener('keydown', (e) => {
@@ -453,31 +489,25 @@ instructions.addEventListener('click', () => { controls.lock(); audioManager.ini
 controls.addEventListener('lock', () => {
   instructions.style.display = 'none';
   if (isInventoryOpen) {
-    // 核心修复：关闭背包时退回所有物品 (Bug 5)
-    // 1. 退回鼠标上的物品
-    if (inventoryUI.holdingItem) {
-      const added = inventoryManager.addItem(inventoryUI.holdingItem.id, inventoryUI.holdingItem.count);
-      inventoryUI.holdingItem.count -= added;
-      if (inventoryUI.holdingItem.count <= 0) inventoryUI.holdingItem = null;
-    }
-    // 2. 退回 2x2 合成格中的物品
-    for (let i = 0; i < 4; i++) {
-      const item = inventoryUI.craftingSlots[i];
-      if (item) {
-        const added = inventoryManager.addItem(item.id, item.count);
-        item.count -= added;
-        if (item.count <= 0) inventoryUI.craftingSlots[i] = null;
-      }
-    }
+    // 核心修复：调用统一的退回逻辑 (Bug 62)
+    returnHeldAndCraftingItems();
     
-    // 如果依然有剩余（背包全满），强制重新打开背包提示玩家
+    // 核心修复: 如果依然有剩余（背包全满），将物品丢出 (Bug 76)
     if (inventoryUI.holdingItem || inventoryUI.craftingSlots.some(s => s !== null)) {
       if (typeof addConsoleMsg === 'function') {
-        addConsoleMsg("背包已满，请先丢弃或使用物品后再关闭！", "red");
+        addConsoleMsg("背包已满，剩余物品已丢出！", "yellow");
       }
-      isOpeningInventory = true;
-      controls.unlock();
-      return;
+      if (inventoryUI.holdingItem) {
+        itemDropManager.spawn(camera.position.x, camera.position.y, camera.position.z, inventoryUI.holdingItem.id, inventoryUI.holdingItem.count);
+        inventoryUI.holdingItem = null;
+      }
+      for (let i = 0; i < 4; i++) {
+        const item = inventoryUI.craftingSlots[i];
+        if (item) {
+          itemDropManager.spawn(camera.position.x, camera.position.y, camera.position.z, item.id, item.count);
+          inventoryUI.craftingSlots[i] = null;
+        }
+      }
     }
 
     inventoryUI.updateDragCursor();
@@ -543,6 +573,7 @@ const raycaster = new THREE.Raycaster();
 const center = new THREE.Vector2(0, 0);
 const MAX_REACH = 5;
 let isMining = false, miningProgress = 0, targetBlock = null;
+let miningGraceTimer = 0; // 核心修复：挖掘容错缓冲 (Bug 61)
 const miningProgressContainer = document.getElementById('mining-progress-container');
 const miningProgressBar = document.getElementById('mining-progress');
 
@@ -713,6 +744,18 @@ function animate() {
   if (itemDropManager) itemDropManager.update(delta, camera.position);
 
   if (controls.isLocked) {
+    // 核心修复: 支持长按连挖，当 isMining 为 true 且当前无目标时，尝试获取新目标 (Bug 77)
+    if (isMining && !targetBlock) {
+      _tempForward.set(0, 0, -1).applyQuaternion(camera.quaternion);
+      const hit = worldManager.raycast(camera.position, _tempForward, MAX_REACH);
+      if (hit) {
+        targetBlock = { x: hit.x, y: hit.y, z: hit.z };
+        miningProgress = 0;
+        miningGraceTimer = 0.2;
+        if (miningProgressContainer) miningProgressContainer.style.display = 'block';
+      }
+    }
+
     if (isMining && targetBlock) {
       // DDA 射线检测方块 (Bug 49)
       _tempForward.set(0, 0, -1).applyQuaternion(camera.quaternion);
@@ -724,6 +767,7 @@ function animate() {
       }
 
       if (hitSameBlock) {
+        miningGraceTimer = 0.2; // 核心修复：命中目标时重置缓冲时间 (Bug 61)
         miningProgress += delta * 0.25;
         if (miningProgressBar) miningProgressBar.style.width = `${Math.min(miningProgress * 100, 100)}%`;
         if (miningProgress >= 1.0) {
@@ -733,16 +777,31 @@ function animate() {
             itemDropManager.spawn(targetBlock.x + 0.5, targetBlock.y + 0.5, targetBlock.z + 0.5, blockId, 1);
           }
           worldManager.setBlock(targetBlock.x, targetBlock.y, targetBlock.z, 0); audioManager.playSound('dig');
-          isMining = false; miningProgress = 0; targetBlock = null; if (miningProgressContainer) miningProgressContainer.style.display = 'none';
+          miningProgress = 0; targetBlock = null; if (miningProgressContainer) miningProgressContainer.style.display = 'none';
         }
-      } else { miningProgress = 0; if (miningProgressBar) miningProgressBar.style.width = '0%'; }
+      } else {
+        // 核心修复: 未命中目标时，先扣除缓冲时间，直到归零才重置进度 (Bug 61)
+        miningGraceTimer -= delta;
+        if (miningGraceTimer <= 0) {
+          miningProgress = 0;
+          targetBlock = null; // Bug 77 核心：缓冲用尽后丢弃目标，允许重新寻找目标
+          if (miningProgressBar) miningProgressBar.style.width = '0%';
+          if (miningProgressContainer) miningProgressContainer.style.display = 'none';
+        }
+      }
     }
 
     // 僵尸伤害逻辑
     for (const mob of mobManager.mobs.values()) {
       if (mob.type === 'zombie' && !mob.isDead) {
-        const distance = mob.group.position.distanceTo(camera.position);
-        if (distance < 1.2) {
+        // 核心修复: 僵尸攻击判定失效 (高度差问题) (Bug 75)
+        const dx = mob.group.position.x - camera.position.x;
+        const dz = mob.group.position.z - camera.position.z;
+        // 僵尸中心点高度约 0.9，相机在 1.6
+        const dy = (mob.group.position.y + 0.9) - camera.position.y;
+        const distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        
+        if (distance < 1.5) {
           const oldTime = lastDamageTime;
           takePlayerDamage(2);
           if (lastDamageTime !== oldTime) {
@@ -794,5 +853,11 @@ function animate() {
     if (isGrounded && !isFlying && (velocity.x*velocity.x + velocity.z*velocity.z) > 1.0 && time - lastFootstepTime > 400) { audioManager.playSound('footstep', 0.3); lastFootstepTime = time; }
   }
   prevTime = time; renderer.render(scene, camera);
+}
+animate();
+cene, camera);
+}
+animate();
+
 }
 animate();
