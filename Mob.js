@@ -318,26 +318,9 @@ export class Mob {
     const radius = 0.35;
     const height = this.type === 'zombie' ? 1.8 : 0.8;
     
-    const checkMobCollision = (pos) => {
-      const minX = Math.floor(pos.x - radius), maxX = Math.floor(pos.x + radius);
-      // 使用 0.05 的偏移量防止在站在方块顶部时误判为内部碰撞
-      const minY = Math.floor(pos.y + 0.05), maxY = Math.floor(pos.y + height);
-      const minZ = Math.floor(pos.z - radius), maxZ = Math.floor(pos.z + radius);
-
-      for (let y = minY; y <= maxY; y++) {
-        for (let z = minZ; z <= maxZ; z++) {
-          for (let x = minX; x <= maxX; x++) {
-            const voxel = worldManager.getBlock(x, y, z);
-            if (voxel !== 0 && voxel !== 3) return true;
-          }
-        }
-      }
-      return false;
-    };
-
     // Y 轴移动与碰撞
     this.group.position.y += deltaPos.y;
-    if (checkMobCollision(this.group.position)) {
+    if (this.checkCollision(this.group.position, worldManager, radius, height)) {
       if (this.velocity.y < 0) {
         // 落地
         this.group.position.y = Math.floor(this.group.position.y) + 1;
@@ -348,7 +331,7 @@ export class Mob {
           const probePos = _tempPos.copy(this.group.position);
           const forward = _tempVec.copy(_tempForward).applyAxisAngle(_tempUp, this.rotation);
           probePos.add(forward.multiplyScalar(radius + 0.1));
-          if (checkMobCollision(probePos)) {
+          if (this.checkCollision(probePos, worldManager, radius, height)) {
             this.velocity.y = 8.0;
           }
         }
@@ -360,19 +343,36 @@ export class Mob {
 
     // X 轴移动
     this.group.position.x += deltaPos.x;
-    if (checkMobCollision(this.group.position)) {
+    if (this.checkCollision(this.group.position, worldManager, radius, height)) {
       this.group.position.x -= deltaPos.x;
     }
 
     // Z 轴移动
     this.group.position.z += deltaPos.z;
-    if (checkMobCollision(this.group.position)) {
+    if (this.checkCollision(this.group.position, worldManager, radius, height)) {
       this.group.position.z -= deltaPos.z;
     }
 
     if (this.group.position.y < -10) {
       this.group.position.set(16, 100, 16);
     }
+  }
+
+  checkCollision(pos, worldManager, radius, height) {
+    const minX = Math.floor(pos.x - radius), maxX = Math.floor(pos.x + radius);
+    // 使用 0.05 的偏移量防止在站在方块顶部时误判为内部碰撞
+    const minY = Math.floor(pos.y + 0.05), maxY = Math.floor(pos.y + height);
+    const minZ = Math.floor(pos.z - radius), maxZ = Math.floor(pos.z + radius);
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let z = minZ; z <= maxZ; z++) {
+        for (let x = minX; x <= maxX; x++) {
+          const voxel = worldManager.getBlock(x, y, z);
+          if (voxel !== 0 && voxel !== 3) return true;
+        }
+      }
+    }
+    return false;
   }
 
   dispose() {

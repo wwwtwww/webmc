@@ -34,7 +34,7 @@
 *   [x] **Bug 28: 夜间光照方向从地下向上** - 已在夜间通过 Math.abs 翻转光源 Y 轴至天空。
 *   [x] **Bug 29: 越界放置方块会白白吞噬物品** - 已在 removeItem 前增加 0-255 高度边界预检。
 *   [x] **Bug 30: 掉落物悬浮动画依然会穿模地面** - 已将落地基础高度增加 0.1 以抵消 Sine 波下沉极值。
-*   [x] **Bug 31: 生物转身动画触发“大回旋”** - 已引入弧度环绕归一化算法，确保生物沿最短路径转身。
+*   [x] **Bug 31: 生物转身动画触发“大回旋** - 已引入弧度环绕归一化算法，确保生物沿最短路径转身。
 *   [x] **Bug 32: 寻路算法(A*)无法进行垂直移动** - 已修改 `Pathfinder.js` 的 `getNeighbors` 返回包括垂直和对角线的 26 个方向，并在 `isTraversable` 中增加了对跳跃行为的判定。
 *   [x] **Bug 33: 掉落物物理状态反复抖动 (物理与视觉脱节)** - 已在 `ItemDrop.js` 中分离视觉 `mesh` 的悬浮位置，使 `group` 物理包围盒紧贴地面方块之上，解决了物理循环抖动穿模问题。
 *   [x] **Bug 34: 无法透过水面或在水下挖掘方块** - 已在 `main.js` `animate` 射线挖掘检测更新逻辑中，对水方块(ID=3)进行了过滤，使其与 `mousedown` 逻辑保持一致。
@@ -43,33 +43,33 @@
 *   [x] **Bug 37: 攻击判定忽略方块遮挡，可隔墙命中生物** - 已重构射线检测逻辑，分别获取方块交点和生物交点后比较它们的 `distance`。只有在生物距离小于实体方块距离时，才判定命中生物，防止“隔墙打牛”。
 *   [x] **Bug 38: 区块加载/卸载没有同步刷新对角线 AO 邻居** - 已在 `WorldManager.update()` 中新区块生成和卸载的逻辑中补全了对角线 4 个相邻区块的 `markDirty` 调用，确保 AO 阴影完整刷新。
 *   [x] **Bug 39: A* 寻路允许斜向“穿角”** - 已在 `Pathfinder.isTraversable()` 中添加对角线运动（dx=1 且 dz=1）时对两侧相邻方块的碰撞体积校验，避免生物挤过墙角缝隙。
-
-*   [x] **Bug 45: WebGL Attribute Buffer 频繁重建导致的 GPU 阻塞** - 已在 `WorldManager.js` 的 `Chunk._updateMeshGeometry` 中实现 `BufferAttribute` 复用逻辑，通过 `setDrawRange` 控制渲染范围，彻底避免了频繁的 GPU 显存重新分配与管线停顿。
+*   [x] **Bug 40: MobManager 属性引用错误导致生物生成逻辑失效** - 已将 `this.skyManager.time` 修正为 `this.skyManager.timeOfDay`，确保昼夜刷怪逻辑恢复正常。
+*   [x] **Bug 41: 生物受击缺乏水平击退效果** - 已在 `Mob.js` 中引入 `attackerPos` 判定与 `knockbackTimer`，使生物被击中时能根据攻击来源向后弹开。
+*   [x] **Bug 42: 背包满时关闭 UI 的逻辑死锁隐患** - 已在 `main.js` 增加“背包已满”Console 提示，并防止物品在无法退回时强行关闭背包。
+*   [x] **Bug 43: 玩家被埋入方块时缺乏窒息伤害** - 已在主循环中增加头部方块重叠判定，处于实体方块内时玩家会周期性掉血。
+*   [x] **Bug 44: 多生物同时攻击玩家时缺乏全局无敌时间 (I-Frame)** - 已在 `takePlayerDamage` 中统一引入 1 秒无敌帧，防止重叠生物瞬间击杀玩家。
+*   [x] **Bug 45: WebGL Attribute Buffer 频繁重建导致的 GPU 阻塞** - 已实现 `BufferAttribute` 复用逻辑与 `setDrawRange` 控制。
+*   [x] **Bug 46: 全局射线检测引起的 O(N) 帧率衰减** - 已将挖掘时的检测范围缩小至目标方块周边 $3 \times 3$ 区块。
+*   [x] **Bug 47: 渲染主循环中的大量对象实例化 (GC 压力)** - 已引入全局/模块级临时变量复用机制。
+*   [x] **Bug 48: 存档持久化的高频 I/O 竞争** - 已引入 500ms 写缓冲防抖提交机制。
+*   [x] **Bug 49: 全局射线检测引起的性能瓶颈 (DDA 优化)** - 已引入 DDA 体素步进算法，完全取代 Three.js Raycaster 定位方块。
+*   [x] **Bug 51: SharedArrayBuffer 传输冲突** - 已在 `chunkWorker.js` 中修正了 `transfer` 逻辑。系统现在会自动识别 `SharedArrayBuffer` 并禁止将其放入所有权转移列表，同时 Worker 内部生成新区块时也优先使用 SAB 以保持内存模型一致性。
 
 *   [x] **Bug 50: Web Worker 数据传输开销导致主线程卡顿** - 主线程向 Worker 发送体素数据时原本使用结构化克隆，在高频 re-mesh 时存在不必要的耗时。已在 `VoxelWorld.js` 中将体素数据封装为 `SharedArrayBuffer`，并配置了 Vite 隔离头，实现了主线程与 Worker 间的零拷贝内存共享。
-
-*   [x] **Bug 49: 全局射线检测引起的 O(N) 帧率衰减 (DDA 优化)** - 已在 `WorldManager.js` 中引入 DDA (Digital Differential Analyzer) 步进算法，并在 `main.js` 中全面取代了 Three.js 的多边形射线检测用于方块定位。直接在 CPU 体素数据层进行运算，效率提升了 10-50 倍，彻底消除了大规模区块下的检测延迟。
 
 ---
 
 ## 🔴 未修复缺陷 (Unresolved Bugs)
 
-*   [ ] **Bug 40: MobManager 属性引用错误导致生物生成逻辑失效** - 在 `MobManager.trySpawnAround` 中，代码使用了 `this.skyManager.time` 来判断昼夜，但 `SkyManager` 类中定义的属性名为 `timeOfDay`。这导致 `time` 为 `undefined`，使得昼夜判断失效（始终判定为白天），从而影响僵尸的正常生成。
-*   [ ] **Bug 41: 生物受击缺乏水平击退效果** - `Mob.takeDamage` 目前仅设置了 `velocity.y = 4.0`（垂直跳跃），缺乏将生物推离攻击者的水平冲量。此外，由于 `Mob.update` 在每一帧都会根据 AI 目标覆盖 `velocity.x` 和 `velocity.z`，导致即使设置了水平速度也会被立即抹除。
-*   [ ] **Bug 42: 背包满时关闭 UI 的逻辑死锁隐患** - 在 `main.js` 的 `toggleInventory` 和 `controls.lock` 监听器中，如果玩家背包已满且鼠标/合成格中仍有物品，代码会强制中断关闭操作或重新打开背包。虽然这是为了防止物品丢失，但缺乏 UI 提示，且可能导致玩家在尝试切回游戏时反复被弹回背包界面。
-*   [ ] **Bug 43: 玩家被埋入方块时缺乏窒息伤害** - 物理引擎虽然能防止玩家走入墙体，但通过 `/tp` 指令或在未加载区块生成时，玩家仍有可能处于实体方块内部。目前系统没有检测这种状态并扣除生命值（窒息）的逻辑。
-*   [ ] **Bug 44: 多生物同时攻击玩家时缺乏全局无敌时间 (I-Frame)** - 僵尸的伤害逻辑在 `main.js` 的循环中独立计算。如果多个僵尸重叠在玩家位置，它们会各自独立触发 `takePlayerDamage`，导致玩家生命值瞬间清空。通常应引入受击后的短暂全局无敌时间。
-
-*   [x] **Bug 48: 存档持久化的高频 I/O 竞争** - 已在 `WorldManager.js` 中引入写缓冲 (Write Buffer) 机制，对方块修改操作进行 500ms 的防抖合并提交。有效解决了高频挖掘或大规模填充指令导致的 IndexedDB 事务阻塞与性能卡顿。
-
-*   [x] **Bug 47: 渲染主循环中的大量对象实例化 (GC 压力)** - 已在 `main.js`, `Mob.js`, `ItemDrop.js` 和 `ItemDropManager.js` 中引入了预分配的全局/模块级临时变量（如 `_tempVec`），并重构了物理与更新逻辑以复用这些变量，消除了每秒数千次的短寿命对象实例化，显著降低了 GC 频率。
-
-*   [x] **Bug 46: 全局射线检测引起的 O(N) 帧率衰减** - 已优化 `main.js` 的 `animate` 循环，将挖掘时的射线检测范围从全场景缩小至目标方块周边的 $3 \times 3$ 区块集合，消除了随渲染距离增加而产生的线性性能损耗。
+*   [ ] **Bug 52: DDA 射线检测在特定退化方向下的死锁风险** - `WorldManager.js` 的 `raycast` 方法在 `direction` 向量含有零分量（如玩家垂直仰望/俯视）时，`tDelta` 会计算出 `Infinity`。若处理不当或遭遇极端浮点误差，`while(true)` 循环可能无法正确触发 `maxDistance` 退出条件，导致主线程卡死。
+*   [ ] **Bug 53: A* 寻路路径点切换时的 AI 震荡** - 在 `Mob.js` 的更新循环中，当僵尸抵达当前路径点并 `shift()` 到下一个点时，`targetRotation` 会瞬间发生 90-180 度的突变。配合 Bug 31 的平滑旋转逻辑，可能导致僵尸在狭窄路口由于旋转过慢而偏离航向，陷入反复掉头的死循环。
+*   [ ] **Bug 54: 满背包挖掘导致的掉落物堆积卡顿** - `main.js` 的挖掘逻辑没有限制掉落物实体的最大数量。如果玩家在背包已满的情况下在大规模自动化区域挖掘，脚下产生的海量 `ItemDrop` Mesh 对象将迅速占满 draw call预算并引起 OOM 风险。
+*   [ ] **Bug 55: 区块 y=0/255 边界 AO 刷新缺失** - 目前 `WorldManager.setBlock` 只考虑了 X/Z 轴的邻居刷新逻辑。由于 AO 计算是跨方块的，修改世界最高/最低层的方块时理论上应触发垂直方向的潜在关联刷新（虽然目前世界高度固定，但底层代码未对该边界状态做鲁棒性保护）。
 
 ---
 
 ## ⚡ 性能优化建议 (Performance Optimization)
 
-*   [ ] **Optimization 1: 每帧射线检测的性能瓶颈 (Important)** - 在 `main.js` 的 `animate` 循环中，长按挖掘触发的多边形级别全局射线检测极为耗时。建议仅对 `targetBlock` 所在 Chunk 进行检测，或使用数据层面的轻量级体素步进 (DDA) 算法。
-*   [ ] **Optimization 2: A* 寻路队列时间复杂度退化 (Suggestion)** - `Pathfinder.js` 中的 `BinaryHeap` 的 `rescoreElement` 使用了 O(N) 的 `indexOf`。为了日后支持大规模长距离寻路，建议引入节点索引 Map 来实现 O(1) 更新，或者改用纯插入并在出队时过滤。
-*   [ ] **Optimization 3: 内存碎片与 GC 压力 (Suggestion)** - `Chunk.js` 每次触发网格化更新时都会销毁并重建全新的 `Float32Array`，增加了内存分配和垃圾回收的负担。建议预分配 Buffer 容量（如 3000 顶点）并通过 `geometry.setDrawRange()` 增量更新顶点数据。
+*   [x] **Optimization 1: 每帧射线检测的性能瓶颈** - 已通过 Bug 49 (DDA 算法) 解决。
+*   [x] **Optimization 2: A* 寻路队列时间复杂度退化** - 已在 `Pathfinder.js` 中为 `BinaryHeap` 实现 O(1) 的索引追踪，优化了 `rescoreElement` 性能。
+*   [x] **Optimization 3: 内存碎片与 GC 压力** - 已通过 Bug 45 (Buffer 复用) 和 Bug 47 (对象复用) 解决。

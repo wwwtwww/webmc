@@ -205,7 +205,14 @@ self.onmessage = function(e) {
 
   // 4. 如果是新生成的，提取中心 16x256x16 返回
   if (needsGeneration) {
-    newVoxels = new Uint8Array(chunkSize * chunkHeight * chunkSize);
+    const volume = chunkSize * chunkHeight * chunkSize;
+    // 核心优化：如果支持 SAB，则在 Worker 中也使用 SAB 创建新体素数组 (Bug 51)
+    if (typeof SharedArrayBuffer !== 'undefined') {
+      newVoxels = new Uint8Array(new SharedArrayBuffer(volume));
+    } else {
+      newVoxels = new Uint8Array(volume);
+    }
+
     for (let y = 0; y < chunkHeight; y++) {
       for (let z = 0; z < chunkSize; z++) {
         for (let x = 0; x < chunkSize; x++) {
@@ -274,7 +281,13 @@ self.onmessage = function(e) {
   const finalize = (c) => ({ positions: new Float32Array(c.positions), normals: new Float32Array(c.normals), uvs: new Float32Array(c.uvs), colors: new Float32Array(c.colors), indices: new Uint32Array(c.indices) });
   const opaque = finalize(channels.opaque), transparent = finalize(channels.transparent);
   const transfer = [opaque.positions.buffer, opaque.normals.buffer, opaque.uvs.buffer, opaque.colors.buffer, opaque.indices.buffer, transparent.positions.buffer, transparent.normals.buffer, transparent.uvs.buffer, transparent.colors.buffer, transparent.indices.buffer];
-  if (newVoxels) transfer.push(newVoxels.buffer);
+  
+  // 核心修复：如果是 SharedArrayBuffer，禁止放入 transfer 列表 (Bug 51)
+  if (newVoxels && typeof SharedArrayBuffer !== 'undefined' && !(newVoxels.buffer instanceof SharedArrayBuffer)) {
+    transfer.push(newVoxels.buffer);
+  } else if (newVoxels && typeof SharedArrayBuffer === 'undefined') {
+    transfer.push(newVoxels.buffer);
+  }
 
   self.postMessage({ opaque, transparent, chunkX, chunkZ, version, voxels: newVoxels }, transfer);
 };

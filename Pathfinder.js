@@ -160,31 +160,23 @@ class BinaryHeap {
     }
 
     push(element) {
+        // 为元素添加用于追踪在 content 中位置的属性
+        element._heapIdx = this.content.length;
         this.content.push(element);
         this.bubbleUp(this.content.length - 1);
     }
 
     pop() {
+        if (this.content.length === 0) return null;
         const result = this.content[0];
+        result._heapIdx = -1;
         const end = this.content.pop();
         if (this.content.length > 0) {
             this.content[0] = end;
+            end._heapIdx = 0;
             this.sinkDown(0);
         }
         return result;
-    }
-
-    remove(node) {
-        const length = this.content.length;
-        for (let i = 0; i < length; i++) {
-            if (this.content[i] !== node) continue;
-            const end = this.content.pop();
-            if (i === length - 1) break;
-            this.content[i] = end;
-            this.bubbleUp(i);
-            this.sinkDown(i);
-            break;
-        }
     }
 
     size() {
@@ -192,7 +184,9 @@ class BinaryHeap {
     }
 
     rescoreElement(node) {
-        this.bubbleUp(this.content.indexOf(node));
+        if (node._heapIdx != null && node._heapIdx !== -1) {
+            this.bubbleUp(node._heapIdx);
+        }
     }
 
     bubbleUp(n) {
@@ -202,8 +196,13 @@ class BinaryHeap {
             const parentN = Math.floor((n + 1) / 2) - 1;
             const parent = this.content[parentN];
             if (score >= this.scoreFunction(parent)) break;
+            
+            // 交换内容并更新索引
             this.content[parentN] = element;
+            element._heapIdx = parentN;
             this.content[n] = parent;
+            parent._heapIdx = n;
+            
             n = parentN;
         }
     }
@@ -230,8 +229,12 @@ class BinaryHeap {
             }
 
             if (swap == null) break;
+            
             this.content[n] = this.content[swap];
+            this.content[n]._heapIdx = n;
             this.content[swap] = element;
+            element._heapIdx = swap;
+            
             n = swap;
         }
     }
