@@ -43,6 +43,7 @@
 ## 2. 待办事项 (To-Do List)
 
 ### 性能极致优化 (短期)
+- [ ] **存档写缓冲机制 (Bug 48)**：在 `WorldManager.js` 中引入异步写缓冲，将高频的 `saveChunkDelta` 数据库操作进行防抖与合并提交，避免高频操作引起的 I/O 竞争。
 - [x] **渲染循环对象复用 (Bug 47)**：重构 `main.js`, `Mob.js`, `ItemDrop.js` 中的物理与更新逻辑，引入全局临时变量复用，消除每帧产生的 `Vector3` 对象实例化，减轻 GC 压力。
 - [x] **射线检测重构 (Bug 46)**：优化 `animate` 循环中的长按挖掘检测，仅对目标及相邻 Chunk 检测或引入 DDA 体素步进算法，消除 O(N) 性能瓶颈。
 - [x] **WebGL 属性缓冲区优化 (Bug 45)**：在 `Chunk._updateMeshGeometry` 中实现 BufferAttribute 复用，使用 `.set()` 更新数据而非频繁销毁重建，解决 GPU 阻塞与显存碎片问题。

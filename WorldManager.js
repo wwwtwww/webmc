@@ -109,6 +109,11 @@ export class WorldManager {
     this.nextRequestId = 0; 
 
     this.dirtyChunks = new Set();
+    
+    // --- 核心优化：写缓冲机制 (Bug 48) ---
+    // 存储待持久化的增量修改: Map<chunkKey, Map<voxelKey, type>>
+    this.persistenceBuffer = new Map();
+    this.persistenceTimer = null;
 
     worker.onmessage = (e) => {
       const { chunkX, chunkZ, version, opaque, transparent, voxels } = e.data;
@@ -175,9 +180,36 @@ export class WorldManager {
     }
 
     // 始终异步持久化增量修改，确保非内存区块也能保存。使用 finalType 确保 Forced Air 标记不丢失。
-    // 核心修复：拦截无效高度的持久化请求 (Bug 14)
+    // 核心优化：写缓冲防抖机制 (Bug 48)
     if (ly >= 0 && ly < this.chunkHeight) {
-      saveChunkDelta(key, lx, ly, lz, finalType).catch(err => console.error("Save failed:", err));
+      if (!this.persistenceBuffer.has(key)) {
+        this.persistenceBuffer.set(key, new Map());
+      }
+      const chunkBuffer = this.persistenceBuffer.get(key);
+      chunkBuffer.set(`${lx}_${ly}_${lz}`, finalType);
+
+      if (this.persistenceTimer) clearTimeout(this.persistenceTimer);
+      this.persistenceTimer = setTimeout(() => this._flushPersistenceBuffer(), 500);
+    }
+  }
+
+  async _flushPersistenceBuffer() {
+    const bufferToFlush = this.persistenceBuffer;
+    this.persistenceBuffer = new Map();
+    this.persistenceTimer = null;
+
+    const promises = [];
+    for (const [chunkKey, voxels] of bufferToFlush.entries()) {
+      for (const [voxelKey, type] of voxels.entries()) {
+        const [lx, ly, lz] = voxelKey.split('_').map(Number);
+        promises.push(saveChunkDelta(chunkKey, lx, ly, lz, type));
+      }
+    }
+
+    try {
+      await Promise.all(promises);
+    } catch (err) {
+      console.error("批量存档持久化失败:", err);
     }
   }
   markDirty(chunkX, chunkZ) { this.dirtyChunks.add(`${chunkX},${chunkZ}`); }
