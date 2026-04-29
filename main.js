@@ -548,36 +548,20 @@ const miningProgressBar = document.getElementById('mining-progress');
 
 document.addEventListener('mousedown', (e) => {
   if (!controls.isLocked) return;
+
+  // 1. DDA 射线检测方块 (Bug 49)
+  _tempForward.set(0, 0, -1).applyQuaternion(camera.quaternion);
+  const voxelHit = worldManager.raycast(camera.position, _tempForward, MAX_REACH);
+
+  // 2. 射线检测生物 (保持使用 Raycaster，因为生物是复杂 Mesh)
   raycaster.setFromCamera(center, camera);
-
-  // 1. 先检查方块，获取最近的阻挡距离
-  const chunkMeshes = Array.from(worldManager.chunks.values()).flatMap(c => [c.opaqueMesh, c.transparentMesh]);
-  const intersects = raycaster.intersectObjects(chunkMeshes);
-  
-  // 核心修复：过滤射线检测结果，忽略水体 (Bug 23)
-  let validIntersect = null;
-  for (const intersect of intersects) {
-    if (intersect.distance > MAX_REACH) continue;
-    
-    // 计算该点代表的方块坐标 (略微向内缩进以准确定位方块)
-    const normal = intersect.face.normal;
-    _tempVec.copy(intersect.point).addScaledVector(normal, -0.01);
-    const blockId = worldManager.getBlock(Math.floor(_tempVec.x), Math.floor(_tempVec.y), Math.floor(_tempVec.z));
-    
-    if (blockId !== 3) { // 如果不是水
-      validIntersect = intersect;
-      break;
-    }
-  }
-
-  // 2. 再检查是否击中生物
   const mobGroups = Array.from(mobManager.mobs.values()).map(m => m.group);
   const mobIntersects = raycaster.intersectObjects(mobGroups, true);
 
   let hitMob = null;
   if (mobIntersects.length > 0 && mobIntersects[0].distance <= MAX_REACH) {
-    // 核心修复：比较生物距离与方块距离，避免隔墙打牛 (Bug 37)
-    if (!validIntersect || mobIntersects[0].distance < validIntersect.distance) {
+    // 比较生物距离与方块距离，避免隔墙打牛 (Bug 37)
+    if (!voxelHit || mobIntersects[0].distance < voxelHit.distance) {
       hitMob = mobIntersects[0];
     }
   }
@@ -597,22 +581,24 @@ document.addEventListener('mousedown', (e) => {
     return; // 命中生物但不是左键，也吃掉点击事件
   }
 
-  if (validIntersect) {
-    const normal = validIntersect.face.normal;
+  if (voxelHit) {
     if (e.button === 0) {
-      _tempVec.copy(validIntersect.point).addScaledVector(normal, -0.5);
       isMining = true; miningProgress = 0;
-      targetBlock = { x: Math.floor(_tempVec.x), y: Math.floor(_tempVec.y), z: Math.floor(_tempVec.z) };
+      targetBlock = { x: voxelHit.x, y: voxelHit.y, z: voxelHit.z };
       if (miningProgressContainer) miningProgressContainer.style.display = 'block';
     } else {
-      _tempVec.copy(validIntersect.point).addScaledVector(normal, 0.5);
       const item = inventoryManager.slots[selectedSlot];
       if (item && item.id !== 0 && blockData[item.id]) {
+        // 计算放置位置：点击坐标 + 点击面的法线
+        const px = voxelHit.x + voxelHit.normal.x;
+        const py = voxelHit.y + voxelHit.normal.y;
+        const pz = voxelHit.z + voxelHit.normal.z;
+
         // 核心修复：防止方块放置在玩家体内 (Bug 4)
         const targetVoxelAABB = {
-          minX: Math.floor(_tempVec.x), maxX: Math.floor(_tempVec.x) + 1,
-          minY: Math.floor(_tempVec.y), maxY: Math.floor(_tempVec.y) + 1,
-          minZ: Math.floor(_tempVec.z), maxZ: Math.floor(_tempVec.z) + 1
+          minX: px, maxX: px + 1,
+          minY: py, maxY: py + 1,
+          minZ: pz, maxZ: pz + 1
         };
         const playerAABB = {
           minX: camera.position.x - playerRadius, maxX: camera.position.x + playerRadius,
@@ -647,11 +633,10 @@ document.addEventListener('mousedown', (e) => {
         }
 
         // 核心修复：增加世界边界检查 (Bug 29)
-        const vy = Math.floor(_tempVec.y);
-        const isWithinBounds = vy >= 0 && vy < 256;
+        const isWithinBounds = py >= 0 && py < 256;
 
         if ((!isOverlapping || isFlying) && blockData[item.id].placeable !== false && isWithinBounds) {
-          worldManager.setBlock(_tempVec.x, _tempVec.y, _tempVec.z, item.id);
+          worldManager.setBlock(px, py, pz, item.id);
           inventoryManager.removeItem(selectedSlot, 1);
           initHotbarUI();
           audioManager.playSound('place');
@@ -729,42 +714,15 @@ function animate() {
 
   if (controls.isLocked) {
     if (isMining && targetBlock) {
-      raycaster.setFromCamera(center, camera);
-      
-      // 核心优化：不再全场景搜索，仅针对目标方块所在区块及其周围 1 层区块进行检测 (Bug 46)
-      const tcx = Math.floor(targetBlock.x / chunkSize);
-      const tcz = Math.floor(targetBlock.z / chunkSize);
-      const candidateMeshes = [];
-      
-      for (let dz = -1; dz <= 1; dz++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          const chunk = worldManager.chunks.get(`${tcx + dx},${tcz + dz}`);
-          if (chunk) {
-            candidateMeshes.push(chunk.opaqueMesh, chunk.transparentMesh);
-          }
-        }
-      }
-
-      const intersects = raycaster.intersectObjects(candidateMeshes);
-      
-      let validIntersect = null;
-      for (const intersect of intersects) {
-        if (intersect.distance > MAX_REACH) continue;
-        const normal = intersect.face.normal;
-        _tempVec.copy(intersect.point).addScaledVector(normal, -0.01);
-        const blockId = worldManager.getBlock(Math.floor(_tempVec.x), Math.floor(_tempVec.y), Math.floor(_tempVec.z));
-        if (blockId !== 3) {
-          validIntersect = intersect;
-          break;
-        }
-      }
+      // DDA 射线检测方块 (Bug 49)
+      _tempForward.set(0, 0, -1).applyQuaternion(camera.quaternion);
+      const voxelHit = worldManager.raycast(camera.position, _tempForward, MAX_REACH);
 
       let hitSameBlock = false;
-      if (validIntersect) {
-        const normal = validIntersect.face.normal;
-        _tempVec.copy(validIntersect.point).addScaledVector(normal, -0.5);
-        if (Math.floor(_tempVec.x) === targetBlock.x && Math.floor(_tempVec.y) === targetBlock.y && Math.floor(_tempVec.z) === targetBlock.z) hitSameBlock = true;
+      if (voxelHit && voxelHit.x === targetBlock.x && voxelHit.y === targetBlock.y && voxelHit.z === targetBlock.z) {
+        hitSameBlock = true;
       }
+
       if (hitSameBlock) {
         miningProgress += delta * 0.25;
         if (miningProgressBar) miningProgressBar.style.width = `${Math.min(miningProgress * 100, 100)}%`;
