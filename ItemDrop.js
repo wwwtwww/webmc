@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 
+// --- 核心优化：预分配模块级临时变量，规避 GC 压力 (Bug 47) ---
+const _tempVec = new THREE.Vector3();
+
 /**
  * ItemDrop.js
  * 掉落物实体：包含旋转、浮动、重力与碰撞逻辑
@@ -49,7 +52,7 @@ export class ItemDrop {
     if (!this.isMagnetic) {
       this.velocity.y -= 20.0 * deltaTime; // 重力
       
-      const deltaPos = this.velocity.clone().multiplyScalar(deltaTime);
+      const deltaPos = _tempVec.copy(this.velocity).multiplyScalar(deltaTime);
       
       // 1. 尝试垂直移动 (Y 轴)
       let nextY = this.group.position.y + deltaPos.y;

@@ -560,9 +560,9 @@ document.addEventListener('mousedown', (e) => {
     if (intersect.distance > MAX_REACH) continue;
     
     // 计算该点代表的方块坐标 (略微向内缩进以准确定位方块)
-    const normal = intersect.face.normal.clone();
-    const voxelPos = intersect.point.clone().sub(normal.clone().multiplyScalar(0.01));
-    const blockId = worldManager.getBlock(Math.floor(voxelPos.x), Math.floor(voxelPos.y), Math.floor(voxelPos.z));
+    const normal = intersect.face.normal;
+    _tempVec.copy(intersect.point).addScaledVector(normal, -0.01);
+    const blockId = worldManager.getBlock(Math.floor(_tempVec.x), Math.floor(_tempVec.y), Math.floor(_tempVec.z));
     
     if (blockId !== 3) { // 如果不是水
       validIntersect = intersect;
@@ -598,20 +598,21 @@ document.addEventListener('mousedown', (e) => {
   }
 
   if (validIntersect) {
-    const normal = validIntersect.face.normal.clone();
-    let voxelPos = e.button === 0 ? validIntersect.point.clone().sub(normal.multiplyScalar(0.5)) : validIntersect.point.clone().add(normal.multiplyScalar(0.5));
+    const normal = validIntersect.face.normal;
     if (e.button === 0) {
+      _tempVec.copy(validIntersect.point).addScaledVector(normal, -0.5);
       isMining = true; miningProgress = 0;
-      targetBlock = { x: Math.floor(voxelPos.x), y: Math.floor(voxelPos.y), z: Math.floor(voxelPos.z) };
+      targetBlock = { x: Math.floor(_tempVec.x), y: Math.floor(_tempVec.y), z: Math.floor(_tempVec.z) };
       if (miningProgressContainer) miningProgressContainer.style.display = 'block';
     } else {
+      _tempVec.copy(validIntersect.point).addScaledVector(normal, 0.5);
       const item = inventoryManager.slots[selectedSlot];
       if (item && item.id !== 0 && blockData[item.id]) {
         // 核心修复：防止方块放置在玩家体内 (Bug 4)
         const targetVoxelAABB = {
-          minX: Math.floor(voxelPos.x), maxX: Math.floor(voxelPos.x) + 1,
-          minY: Math.floor(voxelPos.y), maxY: Math.floor(voxelPos.y) + 1,
-          minZ: Math.floor(voxelPos.z), maxZ: Math.floor(voxelPos.z) + 1
+          minX: Math.floor(_tempVec.x), maxX: Math.floor(_tempVec.x) + 1,
+          minY: Math.floor(_tempVec.y), maxY: Math.floor(_tempVec.y) + 1,
+          minZ: Math.floor(_tempVec.z), maxZ: Math.floor(_tempVec.z) + 1
         };
         const playerAABB = {
           minX: camera.position.x - playerRadius, maxX: camera.position.x + playerRadius,
@@ -646,11 +647,11 @@ document.addEventListener('mousedown', (e) => {
         }
 
         // 核心修复：增加世界边界检查 (Bug 29)
-        const vy = Math.floor(voxelPos.y);
+        const vy = Math.floor(_tempVec.y);
         const isWithinBounds = vy >= 0 && vy < 256;
 
         if ((!isOverlapping || isFlying) && blockData[item.id].placeable !== false && isWithinBounds) {
-          worldManager.setBlock(voxelPos.x, voxelPos.y, voxelPos.z, item.id);
+          worldManager.setBlock(_tempVec.x, _tempVec.y, _tempVec.z, item.id);
           inventoryManager.removeItem(selectedSlot, 1);
           initHotbarUI();
           audioManager.playSound('place');
@@ -709,6 +710,13 @@ function findSafeSpawn() {
   }
 }
 
+// --- 核心优化：预分配全局临时变量，规避 GC 压力 (Bug 47) ---
+const _tempVec = new THREE.Vector3();
+const _tempVec2 = new THREE.Vector3();
+const _tempRight = new THREE.Vector3();
+const _tempForward = new THREE.Vector3();
+const _tempPos = new THREE.Vector3();
+
 function animate() {
   requestAnimationFrame(animate);
   const time = performance.now(), delta = Math.min((time - prevTime) / 1000, 0.1);
@@ -742,9 +750,9 @@ function animate() {
       let validIntersect = null;
       for (const intersect of intersects) {
         if (intersect.distance > MAX_REACH) continue;
-        const normal = intersect.face.normal.clone();
-        const testPos = intersect.point.clone().sub(normal.clone().multiplyScalar(0.01));
-        const blockId = worldManager.getBlock(Math.floor(testPos.x), Math.floor(testPos.y), Math.floor(testPos.z));
+        const normal = intersect.face.normal;
+        _tempVec.copy(intersect.point).addScaledVector(normal, -0.01);
+        const blockId = worldManager.getBlock(Math.floor(_tempVec.x), Math.floor(_tempVec.y), Math.floor(_tempVec.z));
         if (blockId !== 3) {
           validIntersect = intersect;
           break;
@@ -753,9 +761,9 @@ function animate() {
 
       let hitSameBlock = false;
       if (validIntersect) {
-        const normal = validIntersect.face.normal.clone();
-        const voxelPos = validIntersect.point.clone().sub(normal.multiplyScalar(0.5));
-        if (Math.floor(voxelPos.x) === targetBlock.x && Math.floor(voxelPos.y) === targetBlock.y && Math.floor(voxelPos.z) === targetBlock.z) hitSameBlock = true;
+        const normal = validIntersect.face.normal;
+        _tempVec.copy(validIntersect.point).addScaledVector(normal, -0.5);
+        if (Math.floor(_tempVec.x) === targetBlock.x && Math.floor(_tempVec.y) === targetBlock.y && Math.floor(_tempVec.z) === targetBlock.z) hitSameBlock = true;
       }
       if (hitSameBlock) {
         miningProgress += delta * 0.25;
@@ -811,14 +819,16 @@ function animate() {
     else { if (isReady) velocity.y -= gravity * delta; else velocity.y = 0; if (moveState.up && isGrounded) { velocity.y = jumpSpeed; isGrounded = false; } }
     if (moveState.forward || moveState.backward) velocity.z -= (Number(moveState.forward)-Number(moveState.backward)) * speed * delta;
     if (moveState.left || moveState.right) velocity.x -= (Number(moveState.right)-Number(moveState.left)) * speed * delta;
-    const right = new THREE.Vector3(); right.setFromMatrixColumn(camera.matrix, 0); right.y = 0; right.normalize();
-    const forward = new THREE.Vector3(); forward.crossVectors(camera.up, right); forward.y = 0; forward.normalize();
-    const deltaPos = new THREE.Vector3().addScaledVector(right, -velocity.x * delta).addScaledVector(forward, -velocity.z * delta);
+    
+    _tempRight.setFromMatrixColumn(camera.matrix, 0); _tempRight.y = 0; _tempRight.normalize();
+    _tempForward.crossVectors(camera.up, _tempRight); _tempForward.y = 0; _tempForward.normalize();
+    
+    const deltaPos = _tempVec.set(0, 0, 0).addScaledVector(_tempRight, -velocity.x * delta).addScaledVector(_tempForward, -velocity.z * delta);
     deltaPos.y = velocity.y * delta;
     let hitGround = false;
     camera.position.y += deltaPos.y;
     if (checkCollision(camera.position)) { if (velocity.y < 0) { hitGround = true; camera.position.y = Math.floor(camera.position.y - eyeHeight + 1) + eyeHeight; } else camera.position.y -= deltaPos.y; velocity.y = 0; }
-    if (!isFlying && !hitGround && velocity.y <= 0) { const probe = camera.position.clone(); probe.y -= 0.05; if (checkCollision(probe)) { hitGround = true; velocity.y = 0; } }
+    if (!isFlying && !hitGround && velocity.y <= 0) { _tempPos.copy(camera.position); _tempPos.y -= 0.05; if (checkCollision(_tempPos)) { hitGround = true; velocity.y = 0; } }
     isGrounded = hitGround;
     camera.position.x += deltaPos.x; if (checkCollision(camera.position)) { camera.position.x -= deltaPos.x; velocity.x = 0; }
     camera.position.z += deltaPos.z; if (checkCollision(camera.position)) { camera.position.z -= deltaPos.z; velocity.z = 0; }

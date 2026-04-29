@@ -1,6 +1,12 @@
 import * as THREE from 'three';
 import { Pathfinder } from './Pathfinder.js';
 
+// --- 核心优化：预分配模块级临时变量，规避 GC 压力 (Bug 47) ---
+const _tempVec = new THREE.Vector3();
+const _tempForward = new THREE.Vector3(0, 0, 1);
+const _tempUp = new THREE.Vector3(0, 1, 0);
+const _tempPos = new THREE.Vector3();
+
 /**
  * Mob.js
  * 基础生物类 - 包含受击反馈与死亡逻辑
@@ -160,7 +166,7 @@ export class Mob {
         this.velocity.z = (dz / dist) * 8.0;
       }
     } else {
-      const backward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.rotation);
+      const backward = _tempVec.copy(_tempForward).negate().applyAxisAngle(_tempUp, this.rotation);
       this.velocity.x = backward.x * 5.0;
       this.velocity.z = backward.z * 5.0;
     }
@@ -275,7 +281,7 @@ export class Mob {
           this.rightLeg.rotation.x = 0;
         }
       } else if (this.state === 'walking' || this.state === 'chasing') {
-        const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.rotation);
+        const forward = _tempVec.copy(_tempForward).applyAxisAngle(_tempUp, this.rotation);
         this.velocity.x = forward.x * this.moveSpeed;
         this.velocity.z = forward.z * this.moveSpeed;
 
@@ -306,7 +312,7 @@ export class Mob {
     // 物理始终运行 (重力)
     this.velocity.y -= 30.0 * delta;
 
-    const deltaPos = this.velocity.clone().multiplyScalar(delta);
+    const deltaPos = _tempVec.copy(this.velocity).multiplyScalar(delta);
     
     // --- 核心修复：基于 AABB 的生物碰撞系统 ---
     const radius = 0.35;
@@ -339,8 +345,8 @@ export class Mob {
         
         // 自动跳跃避障逻辑
         if (this.state === 'walking' || this.state === 'chasing') {
-          const probePos = this.group.position.clone();
-          const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.rotation);
+          const probePos = _tempPos.copy(this.group.position);
+          const forward = _tempVec.copy(_tempForward).applyAxisAngle(_tempUp, this.rotation);
           probePos.add(forward.multiplyScalar(radius + 0.1));
           if (checkMobCollision(probePos)) {
             this.velocity.y = 8.0;
