@@ -9,6 +9,12 @@
 
 ---
 
+## 🔗 Live Demo
+
+您可以直接在浏览器中体验本项目：**[https://webmc-eqc.pages.dev/](https://webmc-eqc.pages.dev/)**
+
+---
+
 ## ✨ 核心功能亮点
 
 *   **⚡ 多线程 Chunk 生成系统**：地形生成与网格化逻辑完全移交给 **Web Worker** 线程。主线程通过消息传递进行零阻塞通信，彻底消除了地形加载时的画面卡顿。
