@@ -50,9 +50,10 @@
 
 *   [ ] **Bug 40: MobManager 属性引用错误导致生物生成逻辑失效** - 在 `MobManager.trySpawnAround` 中，代码使用了 `this.skyManager.time` 来判断昼夜，但 `SkyManager` 类中定义的属性名为 `timeOfDay`。这导致 `time` 为 `undefined`，使得昼夜判断失效（始终判定为白天），从而影响僵尸的正常生成。
 *   [ ] **Bug 41: 生物受击缺乏水平击退效果** - `Mob.takeDamage` 目前仅设置了 `velocity.y = 4.0`（垂直跳跃），缺乏将生物推离攻击者的水平冲量。此外，由于 `Mob.update` 在每一帧都会根据 AI 目标覆盖 `velocity.x` 和 `velocity.z`，导致即使设置了水平速度也会被立即抹除。
-*   [ ] **Bug 42: 背包满时关闭 UI 的逻辑死锁隐患** - 在 `main.js` 的 `toggleInventory` 和 `controls.lock` 监听器中，如果玩家背包已满且鼠标/合成格中仍有物品，代码会强制中断关闭操作或重新打开背包。虽然这是为了防止物品丢失，但缺乏 UI 提示（如“背包已满”文字），且可能导致玩家在尝试切回游戏时反复被弹回背包界面，产生挫败感。
+*   [ ] **Bug 42: 背包满时关闭 UI 的逻辑死锁隐患** - 在 `main.js` 的 `toggleInventory` 和 `controls.lock` 监听器中，如果玩家背包已满且鼠标/合成格中仍有物品，代码会强制中断关闭操作或重新打开背包。虽然这是为了防止物品丢失，但缺乏 UI 提示，且可能导致玩家在尝试切回游戏时反复被弹回背包界面。
 *   [ ] **Bug 43: 玩家被埋入方块时缺乏窒息伤害** - 物理引擎虽然能防止玩家走入墙体，但通过 `/tp` 指令或在未加载区块生成时，玩家仍有可能处于实体方块内部。目前系统没有检测这种状态并扣除生命值（窒息）的逻辑。
 *   [ ] **Bug 44: 多生物同时攻击玩家时缺乏全局无敌时间 (I-Frame)** - 僵尸的伤害逻辑在 `main.js` 的循环中独立计算。如果多个僵尸重叠在玩家位置，它们会各自独立触发 `takePlayerDamage`，导致玩家生命值瞬间清空。通常应引入受击后的短暂全局无敌时间。
+*   [ ] **Bug 45: WebGL Attribute Buffer 频繁重建导致的 GPU 阻塞** - 在 `WorldManager.js` 的 `Chunk._updateMeshGeometry` 中，更新区块网格时直接使用 `geometry.deleteAttribute` 后跟随 `new THREE.BufferAttribute`。这种操作会强制销毁 GPU 上的旧 Buffer 并重新申请显存，导致显存碎片化及严重的渲染管线停顿。建议预分配固定长度 Buffer 或复用属性数组并设置 `needsUpdate = true`。
 
 ---
 
