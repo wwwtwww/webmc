@@ -722,8 +722,22 @@ function animate() {
   if (controls.isLocked) {
     if (isMining && targetBlock) {
       raycaster.setFromCamera(center, camera);
-      const chunkMeshes = Array.from(worldManager.chunks.values()).flatMap(c => [c.opaqueMesh, c.transparentMesh]);
-      const intersects = raycaster.intersectObjects(chunkMeshes);
+      
+      // 核心优化：不再全场景搜索，仅针对目标方块所在区块及其周围 1 层区块进行检测 (Bug 46)
+      const tcx = Math.floor(targetBlock.x / chunkSize);
+      const tcz = Math.floor(targetBlock.z / chunkSize);
+      const candidateMeshes = [];
+      
+      for (let dz = -1; dz <= 1; dz++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const chunk = worldManager.chunks.get(`${tcx + dx},${tcz + dz}`);
+          if (chunk) {
+            candidateMeshes.push(chunk.opaqueMesh, chunk.transparentMesh);
+          }
+        }
+      }
+
+      const intersects = raycaster.intersectObjects(candidateMeshes);
       
       let validIntersect = null;
       for (const intersect of intersects) {
