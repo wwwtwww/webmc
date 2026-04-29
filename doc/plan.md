@@ -39,6 +39,7 @@
 - [x] **音频系统 (AudioManager)**：实现基于 LRU 缓存的 3D 空间音效管理
 
 ### 性能专项 (Optimization)
+- [x] **Worker 内存共享优化 (Bug 50)**：将 `VoxelWorld` 数据封装为 `SharedArrayBuffer`，实现主线程与 Worker 间的零拷贝同步，彻底消除高频网格化时的序列化开销。
 - [x] **存档持久化写缓冲 (Bug 48)**：在 `WorldManager.js` 中引入写缓冲防抖机制，合并高频 I/O 请求，解决挖掘时的性能卡顿。
 - [x] **内存 GC 压力优化 (Bug 47)**：在 `main.js`, `Mob.js`, `ItemDrop.js` 中使用预分配的全局临时变量复用，消除 Vector3 实例化的 GC 开销。
 - [x] **DDA 射线检测重构 (Bug 46 & 49)**：引入 DDA 步进算法取代原生射线检测，解决 O(N) 级帧率衰减，效率提升 10-50 倍。

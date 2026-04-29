@@ -20,7 +20,20 @@ export class VoxelWorld {
     this.chunkSize = chunkSize;
     this.chunkHeight = chunkHeight;
     const volume = this.chunkSize * this.chunkHeight * this.chunkSize;
-    this.data = new Uint8Array(volume);
+    
+    // 核心优化：使用 SharedArrayBuffer 实现零拷贝共享 (Bug 50)
+    // 注意：这要求服务器配置 Cross-Origin-Opener-Policy: same-origin 和 Cross-Origin-Embedder-Policy: require-corp
+    try {
+      if (typeof SharedArrayBuffer !== 'undefined') {
+        const sab = new SharedArrayBuffer(volume);
+        this.data = new Uint8Array(sab);
+      } else {
+        this.data = new Uint8Array(volume);
+      }
+    } catch (e) {
+      // 在不支持或禁用的环境下回退到普通 ArrayBuffer
+      this.data = new Uint8Array(volume);
+    }
   }
 
   computeVoxelIndex(x, y, z) {

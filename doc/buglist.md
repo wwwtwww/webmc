@@ -46,6 +46,8 @@
 
 *   [x] **Bug 45: WebGL Attribute Buffer 频繁重建导致的 GPU 阻塞** - 已在 `WorldManager.js` 的 `Chunk._updateMeshGeometry` 中实现 `BufferAttribute` 复用逻辑，通过 `setDrawRange` 控制渲染范围，彻底避免了频繁的 GPU 显存重新分配与管线停顿。
 
+*   [x] **Bug 50: Web Worker 数据传输开销导致主线程卡顿** - 主线程向 Worker 发送体素数据时原本使用结构化克隆，在高频 re-mesh 时存在不必要的耗时。已在 `VoxelWorld.js` 中将体素数据封装为 `SharedArrayBuffer`，并配置了 Vite 隔离头，实现了主线程与 Worker 间的零拷贝内存共享。
+
 *   [x] **Bug 49: 全局射线检测引起的 O(N) 帧率衰减 (DDA 优化)** - 已在 `WorldManager.js` 中引入 DDA (Digital Differential Analyzer) 步进算法，并在 `main.js` 中全面取代了 Three.js 的多边形射线检测用于方块定位。直接在 CPU 体素数据层进行运算，效率提升了 10-50 倍，彻底消除了大规模区块下的检测延迟。
 
 ---
