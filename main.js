@@ -11,6 +11,7 @@ import { CommandParser } from './CommandParser.js';
 import { MobManager } from './MobManager.js';
 import { ItemDropManager } from './ItemDropManager.js';
 import { initHelpOverlay } from './HelpOverlay.js';
+import { initHUD, updateHUDHealth } from './PlayerHUD.js';
 
 // 初始化音效管理器
 const audioManager = new AudioManager();
@@ -53,6 +54,9 @@ function updateHpUI() {
   const hpElement = document.getElementById('hp-ui');
   if (hpElement) {
     hpElement.innerText = `HP: ${playerHp} / ${maxPlayerHp}`;
+  }
+  if (typeof updateHUDHealth === 'function') {
+    updateHUDHealth(playerHp, maxPlayerHp);
   }
 }
 
