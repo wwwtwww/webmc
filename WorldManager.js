@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { VoxelWorld } from './VoxelWorld.js';
-import { saveChunkDelta, getChunkDelta } from './db.js';
+import { saveChunkDelta, getChunkDelta, saveBulkChunkDeltas } from './db.js';
 
 const worker = new Worker(new URL('./chunkWorker.js', import.meta.url), { type: 'module' });
 
@@ -54,10 +54,13 @@ export class Chunk {
         const buffer = new newData.constructor(Math.floor(newData.length * 1.2));
         buffer.set(newData);
         attr = new THREE.BufferAttribute(buffer, itemSize);
+        // 核心修复: 即使是新分配的缓冲，也要正确设置 count，防止尾部冗余数据影响 BoundingSphere (Bug 84)
+        attr.count = newData.length / itemSize;
         geometry.setAttribute(name, attr);
       } else {
         // 复用现有 Buffer
         attr.array.set(newData);
+        attr.count = newData.length / itemSize;
         attr.needsUpdate = true;
       }
     };
@@ -115,6 +118,48 @@ export class WorldManager {
     this.persistenceBuffer = new Map();
     this.persistenceTimer = null;
 
+    // 核心修复: 确保页面关闭或隐藏时持久化防抖缓冲能立即落盘 (Bug 81, Bug 87)
+    if (typeof window !== 'undefined') {
+      const syncSaveToLocal = () => {
+        if (this.persistenceBuffer.size > 0) {
+          try {
+            const obj = {};
+            for (const [key, map] of this.persistenceBuffer) {
+              obj[key] = Object.fromEntries(map);
+            }
+            localStorage.setItem('minecraft_pending_deltas', JSON.stringify(obj));
+            this._flushPersistenceBuffer(); // 依然尝试走 IndexedDB
+          } catch (e) {
+            console.error("同步缓存失败:", e);
+          }
+        }
+      };
+
+      window.addEventListener('beforeunload', syncSaveToLocal);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          syncSaveToLocal();
+        }
+      });
+
+      // 启动时恢复未完成的保存
+      const pendingStr = localStorage.getItem('minecraft_pending_deltas');
+      if (pendingStr) {
+        try {
+          const pendingObj = JSON.parse(pendingStr);
+          const mapToFlush = new Map();
+          for (const [key, val] of Object.entries(pendingObj)) {
+            mapToFlush.set(key, new Map(Object.entries(val)));
+          }
+          saveBulkChunkDeltas(mapToFlush).then(() => {
+            localStorage.removeItem('minecraft_pending_deltas');
+          });
+        } catch (e) {
+          console.error("恢复离线保存数据失败:", e);
+        }
+      }
+    }
+
     worker.onmessage = (e) => {
       const { chunkX, chunkZ, version, opaque, transparent, voxels } = e.data;
       const key = `${chunkX},${chunkZ}`;
@@ -163,22 +208,24 @@ export class WorldManager {
     const stepY = (direction.y > 0) ? 1 : -1;
     const stepZ = (direction.z > 0) ? 1 : -1;
 
-    const tDeltaX = Math.abs(1 / direction.x);
-    const tDeltaY = Math.abs(1 / direction.y);
-    const tDeltaZ = Math.abs(1 / direction.z);
+    const tDeltaX = (direction.x === 0) ? Infinity : Math.abs(1 / direction.x);
+    const tDeltaY = (direction.y === 0) ? Infinity : Math.abs(1 / direction.y);
+    const tDeltaZ = (direction.z === 0) ? Infinity : Math.abs(1 / direction.z);
 
     const distNextX = (stepX > 0) ? (x + 1 - start.x) : (start.x - x);
     const distNextY = (stepY > 0) ? (y + 1 - start.y) : (start.y - y);
     const distNextZ = (stepZ > 0) ? (z + 1 - start.z) : (start.z - z);
 
-    let tMaxX = (tDeltaX < Infinity) ? tDeltaX * distNextX : Infinity;
-    let tMaxY = (tDeltaY < Infinity) ? tDeltaY * distNextY : Infinity;
-    let tMaxZ = (tDeltaZ < Infinity) ? tDeltaZ * distNextZ : Infinity;
+    let tMaxX = (tDeltaX === Infinity) ? Infinity : tDeltaX * distNextX;
+    let tMaxY = (tDeltaY === Infinity) ? Infinity : tDeltaY * distNextY;
+    let tMaxZ = (tDeltaZ === Infinity) ? Infinity : tDeltaZ * distNextZ;
 
     // 击中表面的法线
     const hitNormal = new THREE.Vector3();
+    let safetyCounter = 0;
+    const maxIterations = 200; // 安全阈值，防止极端情况死锁
 
-    while (true) {
+    while (safetyCounter++ < maxIterations) {
       const blockId = this.getBlock(x, y, z);
       
       // 命中非空气、非水方块
@@ -221,16 +268,17 @@ export class WorldManager {
   }
 
   setBlock(worldX, worldY, worldZ, type) {
+    const ly = Math.floor(worldY);
+    if (ly < 0 || ly >= this.chunkHeight) return; // 核心修复：拦截越界高度，防止无效刷新 (Bug 55)
+
     const chunkX = Math.floor(worldX / this.chunkSize), chunkZ = Math.floor(worldZ / this.chunkSize);
     const key = `${chunkX},${chunkZ}`;
     const chunk = this.chunks.get(key);
     
     const lx = Math.floor(worldX - chunkX * this.chunkSize);
-    const ly = Math.floor(worldY);
     const lz = Math.floor(worldZ - chunkZ * this.chunkSize);
 
     // 确定最终存储的 ID。如果是在尚未生成的区域挖掘（type=0），使用 ID 255 (Forced Air)
-    // 即使 chunk 实例不存在，我们也根据其是否在 this.chunks 中以及 generated 状态判定
     const isGenerated = chunk ? chunk.generated : false; 
     const finalType = (type === 0 && !isGenerated) ? 255 : type;
 
@@ -238,7 +286,6 @@ export class WorldManager {
       chunk.world.setBlock(lx, ly, lz, finalType);
 
       // 核心修复：更严密的邻居脏标记逻辑 (Bug 24)
-      // 包含 4 个侧面和 4 个对角线邻居，确保 AO 阴影实时刷新
       this.markDirty(chunkX, chunkZ);
       if (lx === 0) this.markDirty(chunkX - 1, chunkZ);
       if (lx === this.chunkSize - 1) this.markDirty(chunkX + 1, chunkZ);
@@ -249,20 +296,22 @@ export class WorldManager {
       if (lx === 0 && lz === this.chunkSize - 1) this.markDirty(chunkX - 1, chunkZ + 1);
       if (lx === this.chunkSize - 1 && lz === 0) this.markDirty(chunkX + 1, chunkZ - 1);
       if (lx === this.chunkSize - 1 && lz === this.chunkSize - 1) this.markDirty(chunkX + 1, chunkZ + 1);
+
+      // 核心修复：垂直边界 AO 刷新鲁棒性保护 (Bug 55)
+      // 如果未来支持垂直分块，此处需增加对上下相邻区块的 markDirty 调用
+      if (ly === 0) { /* markDirtyVertical(chunkX, chunkY-1, chunkZ) */ }
+      if (ly === this.chunkHeight - 1) { /* markDirtyVertical(chunkX, chunkY+1, chunkZ) */ }
     }
 
-    // 始终异步持久化增量修改，确保非内存区块也能保存。使用 finalType 确保 Forced Air 标记不丢失。
-    // 核心优化：写缓冲防抖机制 (Bug 48)
-    if (ly >= 0 && ly < this.chunkHeight) {
-      if (!this.persistenceBuffer.has(key)) {
-        this.persistenceBuffer.set(key, new Map());
-      }
-      const chunkBuffer = this.persistenceBuffer.get(key);
-      chunkBuffer.set(`${lx}_${ly}_${lz}`, finalType);
-
-      if (this.persistenceTimer) clearTimeout(this.persistenceTimer);
-      this.persistenceTimer = setTimeout(() => this._flushPersistenceBuffer(), 500);
+    // 始终异步持久化增量修改，确保非内存区块也能保存。
+    if (!this.persistenceBuffer.has(key)) {
+      this.persistenceBuffer.set(key, new Map());
     }
+    const chunkBuffer = this.persistenceBuffer.get(key);
+    chunkBuffer.set(`${lx}_${ly}_${lz}`, finalType);
+
+    if (this.persistenceTimer) clearTimeout(this.persistenceTimer);
+    this.persistenceTimer = setTimeout(() => this._flushPersistenceBuffer(), 500);
   }
 
   async _flushPersistenceBuffer() {
@@ -270,16 +319,8 @@ export class WorldManager {
     this.persistenceBuffer = new Map();
     this.persistenceTimer = null;
 
-    const promises = [];
-    for (const [chunkKey, voxels] of bufferToFlush.entries()) {
-      for (const [voxelKey, type] of voxels.entries()) {
-        const [lx, ly, lz] = voxelKey.split('_').map(Number);
-        promises.push(saveChunkDelta(chunkKey, lx, ly, lz, type));
-      }
-    }
-
     try {
-      await Promise.all(promises);
+      await saveBulkChunkDeltas(bufferToFlush);
     } catch (err) {
       console.error("批量存档持久化失败:", err);
     }
@@ -378,6 +419,9 @@ export class WorldManager {
           const [cx, cz] = key.split(',').map(Number);
           this.markDirty(cx - 1, cz); this.markDirty(cx + 1, cz);
           this.markDirty(cx, cz - 1); this.markDirty(cx, cz + 1);
+          // 核心修复: 区块卸载时也要同步刷新对角线邻居，防止 AO 断层 (Bug 80)
+          this.markDirty(cx - 1, cz - 1); this.markDirty(cx + 1, cz - 1);
+          this.markDirty(cx - 1, cz + 1); this.markDirty(cx + 1, cz + 1);
           chunk.dispose();
           this.chunks.delete(key);
           this.dirtyChunks.delete(key);

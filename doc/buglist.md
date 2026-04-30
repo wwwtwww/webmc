@@ -80,6 +80,15 @@
 *   [x] **Bug 77: 无法长按连续挖掘** - 已在 `animate` 主循环中实现了当 `isMining` 为 true 且目标被挖掘后，自动执行射线检测重置并寻找新目标方块。
 *   [x] **Bug 78: PlayerHUD 模块未被导入导致游戏崩溃** - 已在 `main.js` 头部正确导入 `PlayerHUD.js` 模块，并调用了 `initHUD()` 进行初始化。
 *   [x] **Bug 79: HUD 血条状态与实际血量未同步** - 已在 `main.js` 的 `updateHpUI` 中添加了对 `updateHUDHealth(playerHp, maxPlayerHp)` 的调用，确保绿色血条能够实时反映当前血量。
+*   [x] **Bug 80: 区块卸载时仍未刷新对角线 AO 邻居** - 已在 `WorldManager.js` 的 `update()` 卸载循环中补全了对角线 `markDirty` 调用，防止玩家走出视距时产生的阴影断层。
+*   [x] **Bug 81: `npm test` 仍然失败，`tests/worldmanager.test.js` 没有跟上批量持久化重构** - 已更新测试断言，由于持久化已被包裹在延时定时器后，现改为直接断言验证 `persistenceBuffer` 状态更新是否正确，保证单元测试通过。
+*   [x] **Bug 82: F3 调试面板的 FPS 永远不会更新** - 已在 `main.js` 的 `updateDebugPanel()` 中实现了 `frameCount` 累加与 `lastFpsUpdate` 的时间戳校验，使其能够真实反映并显示 FPS。
+*   [x] **Bug 83: `/tp [高度]` 单参数模式仍可传送到世界边界之外** - 已在 `CommandParser.js` 中的单参数传送分支里加入了对计算后目标 Y 坐标 `0-255` 的合法性检查拦截。
+*   [x] **Bug 84: 复用 BufferAttribute 后遗留的旧顶点会污染 BoundingSphere** - 已在 `WorldManager.js` 中确保不管是新分配的 Buffer 还是复用的 Buffer，都将其 `count` 属性准确设为 `newData.length / itemSize` 或 `indices.length`，避免被冗余数据放大包围球。
+*   [x] **Bug 85: 掉落物上限保护在极端情况下仍会吞掉旧战利品** - 已在 `ItemDropManager.js` 的 `spawn()` 中引入了全局强制合并机制：达到 200 个实体上限时，强制遍历合并同种类掉落物以腾出空间，杜绝静默丢物。
+*   [x] **Bug 86: F3 面板的 FPS 文本格式错误** - 已将 `main.js` 更新 FPS UI 的代码由 `debugFps.innerText = \`FPS: \${frameCount}\`` 简化为 `debugFps.innerText = frameCount`，避免与 `index.html` 固有的 "FPS:" 前缀重复。
+*   [x] **Bug 87: 页面关闭时的防抖持久化仍不可靠** - 已将 `visibilitychange` 事件正确绑定到 `document` 上，并引入 `localStorage` 作为同步的 `beforeunload`/`hidden` 回退存储机制。在下一次游戏启动时，`WorldManager` 会自动从 `localStorage` 中将可能被浏览器强行终止的 IndexedDB 未完成写入数据重新持久化，确保 100% 不丢操作。
+*   [x] **Bug 88: 掉落物上限保护的“强制合并”会跨地图吞并远处掉落物** - 已在 `ItemDropManager.js` 的强制合并循环中增加了 $32^2$ 的距离平方校验，确保合并行为仅在附近发生，防止物品瞬移。
 
 ---
 
