@@ -89,6 +89,7 @@
 *   [x] **Bug 86: F3 面板的 FPS 文本格式错误** - 已将 `main.js` 更新 FPS UI 的代码由 `debugFps.innerText = \`FPS: \${frameCount}\`` 简化为 `debugFps.innerText = frameCount`，避免与 `index.html` 固有的 "FPS:" 前缀重复。
 *   [x] **Bug 87: 页面关闭时的防抖持久化仍不可靠** - 已将 `visibilitychange` 事件正确绑定到 `document` 上，并引入 `localStorage` 作为同步的 `beforeunload`/`hidden` 回退存储机制。在下一次游戏启动时，`WorldManager` 会自动从 `localStorage` 中将可能被浏览器强行终止的 IndexedDB 未完成写入数据重新持久化，确保 100% 不丢操作。
 *   [x] **Bug 88: 掉落物上限保护的“强制合并”会跨地图吞并远处掉落物** - 已在 `ItemDropManager.js` 的强制合并循环中增加了 $32^2$ 的距离平方校验，确保合并行为仅在附近发生，防止物品瞬移。
+*   [x] **Bug 89: 玩家血量 UI 重叠 (冗余显示)** - 已移除 `index.html` 中旧的 `#hp-ui` 元素，并清理了 `main.js` 中的冗余更新逻辑，现在统一由 `PlayerHUD` 模块负责显示。
 
 ---
 

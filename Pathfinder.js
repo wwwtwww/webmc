@@ -1,5 +1,5 @@
 export class Pathfinder {
-    static findPath(start, goal, worldManager, maxNodes = 500) {
+    static findPath(start, goal, worldManager, maxNodes = 1500) {
         if (!start || !goal || !worldManager) return null;
 
         // Start and goal should be integers
@@ -116,6 +116,17 @@ export class Pathfinder {
         
         // 3. (x, y+1, z) is air/water (2-block height clearance)
         const aboveOk = (blockAbove === 0 || blockAbove === 3);
+
+        // 核心修复: 跳跃过程中的高度校验 (Bug 60)
+        // 如果是从低处往高处跳 (y = currentNode.y + 1)，
+        // 则当前格子的上方 (currentNode.y + 2) 必须也是空气，否则会撞头。
+        let jumpClearanceOk = true;
+        if (currentNode && y === currentNode.y + 1) {
+            const headSpaceVoxel = worldManager.getBlock(currentNode.x, currentNode.y + 2, currentNode.z);
+            if (headSpaceVoxel !== 0 && headSpaceVoxel !== 3) {
+                jumpClearanceOk = false;
+            }
+        }
         
         // 4. 对角线穿角检测 (Bug 39)
         let diagonalOk = true;
@@ -139,7 +150,7 @@ export class Pathfinder {
             }
         }
         
-        return currentOk && belowOk && aboveOk && diagonalOk;
+        return currentOk && belowOk && aboveOk && jumpClearanceOk && diagonalOk;
     }
 
     static reconstructPath(node) {

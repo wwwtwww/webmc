@@ -282,8 +282,19 @@ export class Mob {
         }
       } else if (this.state === 'walking' || this.state === 'chasing') {
         const forward = _tempVec.copy(_tempForward).applyAxisAngle(_tempUp, this.rotation);
-        this.velocity.x = forward.x * this.moveSpeed;
-        this.velocity.z = forward.z * this.moveSpeed;
+        
+        // 核心修复: 如果目标角度差距过大（如需要调头），先减速并原地转向，防止惯性冲出路径 (Bug 53)
+        // 使用余弦值作为缩放系数，并在 90 度以上时停止前进
+        let moveScale = 1.0;
+        if (this.state === 'chasing') {
+          const angleDiffForScale = Math.abs(angleDiff);
+          moveScale = Math.max(0, Math.cos(angleDiffForScale));
+          // 进一步强化：对于大角度转向，极速衰减速度
+          if (angleDiffForScale > Math.PI / 4) moveScale *= 0.5;
+        }
+
+        this.velocity.x = forward.x * this.moveSpeed * moveScale;
+        this.velocity.z = forward.z * this.moveSpeed * moveScale;
 
         if (this.type === 'zombie' && this.leftLeg) {
           this.walkAnimTime = (this.walkAnimTime || 0) + delta * this.moveSpeed * 2.5;
@@ -345,12 +356,20 @@ export class Mob {
     this.group.position.x += deltaPos.x;
     if (this.checkCollision(this.group.position, worldManager, radius, height)) {
       this.group.position.x -= deltaPos.x;
+      // 核心修复: 水平碰撞时尝试跳跃 (Bug 58)
+      if (this.velocity.y === 0 && (this.state === 'walking' || this.state === 'chasing')) {
+        this.velocity.y = 8.0;
+      }
     }
 
     // Z 轴移动
     this.group.position.z += deltaPos.z;
     if (this.checkCollision(this.group.position, worldManager, radius, height)) {
       this.group.position.z -= deltaPos.z;
+      // 核心修复: 水平碰撞时尝试跳跃 (Bug 58)
+      if (this.velocity.y === 0 && (this.state === 'walking' || this.state === 'chasing')) {
+        this.velocity.y = 8.0;
+      }
     }
 
     if (this.group.position.y < -10) {

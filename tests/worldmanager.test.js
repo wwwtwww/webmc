@@ -1,9 +1,11 @@
 const saveChunkDeltaMock = vi.hoisted(() => vi.fn());
 const getChunkDeltaMock = vi.hoisted(() => vi.fn());
+const saveBulkChunkDeltasMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../db.js', () => ({
   saveChunkDelta: saveChunkDeltaMock,
   getChunkDelta: getChunkDeltaMock,
+  saveBulkChunkDeltas: saveBulkChunkDeltasMock,
 }));
 
 const workerInstances = [];
@@ -25,8 +27,10 @@ describe('WorldManager', () => {
     workerInstances.length = 0;
     saveChunkDeltaMock.mockReset();
     getChunkDeltaMock.mockReset();
+    saveBulkChunkDeltasMock.mockReset();
     saveChunkDeltaMock.mockResolvedValue(undefined);
     getChunkDeltaMock.mockResolvedValue({});
+    saveBulkChunkDeltasMock.mockResolvedValue(undefined);
     vi.stubGlobal('Worker', MockWorker);
 
     ({ WorldManager, Chunk } = await import('../WorldManager.js'));
@@ -90,7 +94,10 @@ describe('WorldManager', () => {
     expect(manager.dirtyChunks.has('0,0')).toBe(true);
     expect(manager.dirtyChunks.has('-1,0')).toBe(true);
     expect(manager.dirtyChunks.has('0,-1')).toBe(true);
-    expect(saveChunkDeltaMock).toHaveBeenCalledWith('0,0', 0, 4, 0, expect.any(Number));
+    
+    // Check persistence buffer since saveBulkChunkDeltas is async via timeout
+    expect(manager.persistenceBuffer.has('0,0')).toBe(true);
+    expect(manager.persistenceBuffer.get('0,0').get('0_4_0')).toBe(255);
   });
 
   it('ignores stale worker responses and accepts matching ones', () => {

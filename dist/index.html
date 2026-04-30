@@ -217,8 +217,11 @@
       .craft-grid {
         display: grid;
         grid-template-columns: repeat(2, 52px);
-        grid-template-rows: repeat(2, 52px);
-        gap: 2px;
+        gap: 4px;
+        margin-right: 16px;
+      }
+      .craft-grid.workbench-mode {
+        grid-template-columns: repeat(3, 52px);
       }
 
       .craft-arrow {
@@ -233,7 +236,7 @@
         margin-bottom: 0;
       }
     </style>
-    <script type="module" crossorigin src="/assets/index-Pc6FVbLs.js"></script>
+    <script type="module" crossorigin src="/assets/index-BdBALGqm.js"></script>
   </head>
   <body>
     <!-- 确保 app 和 hotbar 是同级且 hotbar 在后/高 z-index -->
@@ -246,12 +249,7 @@
         <div class="crafting-container">
           <div>
             <div class="inv-title">Crafting</div>
-            <div class="craft-grid" id="crafting-grid">
-              <div class="inv-slot" data-type="craft" data-index="0"></div>
-              <div class="inv-slot" data-type="craft" data-index="1"></div>
-              <div class="inv-slot" data-type="craft" data-index="2"></div>
-              <div class="inv-slot" data-type="craft" data-index="3"></div>
-            </div>
+            <div class="craft-grid" id="crafting-grid"></div>
           </div>
           <div class="craft-arrow">→</div>
           <div class="inv-slot" id="crafting-result" style="width: 52px; height: 52px;"></div>
@@ -290,11 +288,31 @@
       <div id="mining-progress" style="width: 0%; height: 100%; background-color: #00ffcc; border-radius: 3px;"></div>
     </div>
 
+    <!-- HP UI -->
+    <div id="hp-ui" style="position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); color: red; font-size: 24px; font-weight: bold; text-shadow: 2px 2px 4px black; z-index: 100;">
+      HP: 20 / 20
+    </div>
+
+    <!-- Damage Flash Overlay -->
+    <div id="damage-flash" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: red; opacity: 0; pointer-events: none; z-index: 10000; transition: opacity 0.1s;"></div>
+
     <!-- 开发者控制台 UI -->
-    <div id="console-ui" style="display: none; position: fixed; bottom: 0; left: 0; width: 100%; background-color: rgba(0, 0, 0, 0.7); padding: 10px; z-index: 2000; box-sizing: border-box;">
+    <div id="console-ui" style="display: none; position: fixed; bottom: 0; left: 0; width: 100%; background-color: rgba(0, 0, 0, 0.8); padding: 10px; z-index: 2000; box-sizing: border-box; font-family: monospace;">
+      <div id="console-log" style="max-height: 150px; overflow-y: auto; color: #aaa; margin-bottom: 8px; font-size: 14px; display: flex; flex-direction: column; gap: 2px;"></div>
       <div style="display: flex; align-items: center; gap: 10px;">
-        <span style="color: #00ffcc; font-family: monospace; font-weight: bold;">></span>
-        <input id="console-input" type="text" style="flex-grow: 1; background: transparent; border: none; outline: none; color: #fff; font-family: monospace; font-size: 16px;" placeholder="输入指令... (例如 /time 0.5)" autocomplete="off" />
+        <span style="color: #00ffcc; font-weight: bold;">></span>
+        <input id="console-input" type="text" style="flex-grow: 1; background: transparent; border: none; outline: none; color: #fff; font-size: 16px;" placeholder="输入指令... (例如 /time 12)" autocomplete="off" />
+      </div>
+    </div>
+
+  </body>
+</html>eight: bold;">></span>
+        <input id="console-input" type="text" style="flex-grow: 1; background: transparent; border: none; outline: none; color: #fff; font-size: 16px;" placeholder="输入指令... (例如 /time 12)" autocomplete="off" />
+      </div>
+    </div>
+
+  </body>
+</html>r: #fff; font-size: 16px;" placeholder="输入指令... (例如 /time 12)" autocomplete="off" />
       </div>
     </div>
 

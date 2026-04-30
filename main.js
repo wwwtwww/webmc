@@ -55,13 +55,7 @@ const maxPlayerHp = 20;
 let lastDamageTime = 0;
 
 function updateHpUI() {
-  const hpElement = document.getElementById('hp-ui');
-  if (hpElement) {
-    hpElement.innerText = `HP: ${playerHp} / ${maxPlayerHp}`;
-  }
-  if (typeof updateHUDHealth === 'function') {
-    updateHUDHealth(playerHp, maxPlayerHp);
-  }
+  updateHUDHealth(playerHp, maxPlayerHp);
 }
 
 function takePlayerDamage(amount) {

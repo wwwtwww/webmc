@@ -32,76 +32,85 @@ export class ItemDrop {
     this.mesh = new THREE.Mesh(geometry, material);
     this.group.add(this.mesh);
 
+    // 核心修复: 确保初速度不为 0，防止归一化 NaN (Bug 68)
+    const vx = (Math.random() - 0.5) * 2;
+    const vz = (Math.random() - 0.5) * 2;
     this.velocity = new THREE.Vector3(
-      (Math.random() - 0.5) * 2,
+      Math.abs(vx) < 0.01 ? 0.1 : vx,
       4.0, 
-      (Math.random() - 0.5) * 2
+      Math.abs(vz) < 0.01 ? 0.1 : vz
     );
     this.isMagnetic = false;
     this.time = Math.random() * Math.PI * 2; // 随机相位
   }
 
-  update(deltaTime, worldManager) {
+  update(deltaTime, worldManager, playerPosition = null) {
     this.time += deltaTime * 2;
 
     // 1. 经典视觉动画 (仅对 Mesh 生效，不影响 Group 物理判定)
     this.mesh.rotation.y += deltaTime * 2;
     this.mesh.position.y = Math.sin(this.time) * 0.1 + 0.1; // 增加 0.1 偏移避免底部穿模
 
-    // 2. 简单物理 (如果不处于吸附状态，操作 Group 坐标)
-    if (!this.isMagnetic) {
+    // 2. 简单物理
+    if (this.isMagnetic && playerPosition) {
+      // 磁力吸附：向玩家中心加速飞去 (Bug 69)
+      const dir = _tempVec.copy(playerPosition).sub(this.group.position).normalize();
+      this.velocity.copy(dir).multiplyScalar(8.0);
+    } else {
       this.velocity.y -= 20.0 * deltaTime; // 重力
+    }
       
-      const deltaPos = _tempVec.copy(this.velocity).multiplyScalar(deltaTime);
-      
-      // 1. 尝试垂直移动 (Y 轴)
-      let nextY = this.group.position.y + deltaPos.y;
-      const blockX = Math.floor(this.group.position.x);
-      const blockZ = Math.floor(this.group.position.z);
-      
-      // 核心修复：检测垂直方向碰撞 (Bug 19 & 21)
-      if (deltaPos.y < 0) {
-        // 落地检测
-        const voxelBelow = worldManager.getBlock(blockX, Math.floor(nextY - 0.125), blockZ);
-        if (voxelBelow !== 0 && voxelBelow !== 3) {
-          this.velocity.y = 0;
+    const deltaPos = _tempVec.copy(this.velocity).multiplyScalar(deltaTime);
+    
+    // 1. 尝试垂直移动 (Y 轴)
+    let nextY = this.group.position.y + deltaPos.y;
+    const blockX = Math.floor(this.group.position.x);
+    const blockZ = Math.floor(this.group.position.z);
+    
+    // 核心修复：检测垂直方向碰撞 (Bug 19 & 21)
+    if (deltaPos.y < 0) {
+      // 落地检测
+      const voxelBelow = worldManager.getBlock(blockX, Math.floor(nextY - 0.125), blockZ);
+      if (voxelBelow !== 0 && voxelBelow !== 3) {
+        this.velocity.y = 0;
+        if (!this.isMagnetic) {
           this.velocity.x *= 0.5; // 落地时水平减速
           this.velocity.z *= 0.5;
-          // 物理坐标严格贴合方块表面 (方块顶部 + 0.125中心偏移)，视觉高度通过mesh.position.y处理
-          this.group.position.y = Math.floor(nextY - 0.125) + 1.125;
-        } else {
-          this.group.position.y = nextY;
         }
-      } else if (deltaPos.y > 0) {
-        // 天花板检测 (Bug 21)
-        const voxelAbove = worldManager.getBlock(blockX, Math.floor(nextY + 0.125), blockZ);
-        if (voxelAbove !== 0 && voxelAbove !== 3) {
-          this.velocity.y = 0; // 撞到天花板停止上升
-        } else {
-          this.group.position.y = nextY;
-        }
+        // 物理坐标严格贴合方块表面 (方块顶部 + 0.125中心偏移)，视觉高度通过mesh.position.y处理
+        this.group.position.y = Math.floor(nextY - 0.125) + 1.125;
       } else {
         this.group.position.y = nextY;
       }
-
-      // 2. 尝试水平移动 (X 和 Z 轴)
-      // 处理 X 轴
-      let nextX = this.group.position.x + deltaPos.x;
-      const voxelX = worldManager.getBlock(Math.floor(nextX + (deltaPos.x > 0 ? 0.125 : -0.125)), Math.floor(this.group.position.y), blockZ);
-      if (voxelX !== 0 && voxelX !== 3) {
-        this.velocity.x = 0;
+    } else if (deltaPos.y > 0) {
+      // 天花板检测 (Bug 21)
+      const voxelAbove = worldManager.getBlock(blockX, Math.floor(nextY + 0.125), blockZ);
+      if (voxelAbove !== 0 && voxelAbove !== 3) {
+        this.velocity.y = 0; // 撞到天花板停止上升
       } else {
-        this.group.position.x = nextX;
+        this.group.position.y = nextY;
       }
+    } else {
+      this.group.position.y = nextY;
+    }
 
-      // 处理 Z 轴
-      let nextZ = this.group.position.z + deltaPos.z;
-      const voxelZ = worldManager.getBlock(Math.floor(this.group.position.x), Math.floor(this.group.position.y), Math.floor(nextZ + (deltaPos.z > 0 ? 0.125 : -0.125)));
-      if (voxelZ !== 0 && voxelZ !== 3) {
-        this.velocity.z = 0;
-      } else {
-        this.group.position.z = nextZ;
-      }
+    // 2. 尝试水平移动 (X 和 Z 轴)
+    // 处理 X 轴
+    let nextX = this.group.position.x + deltaPos.x;
+    const voxelX = worldManager.getBlock(Math.floor(nextX + (deltaPos.x > 0 ? 0.125 : -0.125)), Math.floor(this.group.position.y), blockZ);
+    if (voxelX !== 0 && voxelX !== 3) {
+      this.velocity.x = 0;
+    } else {
+      this.group.position.x = nextX;
+    }
+
+    // 处理 Z 轴
+    let nextZ = this.group.position.z + deltaPos.z;
+    const voxelZ = worldManager.getBlock(Math.floor(this.group.position.x), Math.floor(this.group.position.y), Math.floor(nextZ + (deltaPos.z > 0 ? 0.125 : -0.125)));
+    if (voxelZ !== 0 && voxelZ !== 3) {
+      this.velocity.z = 0;
+    } else {
+      this.group.position.z = nextZ;
     }
   }
 

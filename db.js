@@ -33,6 +33,22 @@ export async function saveChunkDelta(chunkKey, x, y, z, blockId) {
 }
 
 /**
+ * 批量保存多个区块的增量修改 (Bug 56)
+ * @param {Map<string, Map<string, number>>} bufferToFlush Map<chunkKey, Map<voxelKey, blockId>>
+ */
+export async function saveBulkChunkDeltas(bufferToFlush) {
+  await db.transaction('rw', db.chunks, async () => {
+    for (const [chunkKey, voxels] of bufferToFlush.entries()) {
+      const entry = await db.chunks.get(chunkKey) || { chunkKey, deltas: {} };
+      for (const [voxelKey, blockId] of voxels.entries()) {
+        entry.deltas[voxelKey] = blockId;
+      }
+      await db.chunks.put(entry);
+    }
+  });
+}
+
+/**
  * 获取指定区块的所有历史增量修改
  * @returns {Promise<Object>} 返回 { "x_y_z": id, ... }
  */

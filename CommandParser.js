@@ -120,13 +120,26 @@ export class CommandParser {
     if (args.length === 1) {
       const y = parseFloat(args[0]);
       if (isNaN(y)) return '用法: /tp [高度]';
-      this.ctx.camera.position.y += y;
+      
+      // 核心修复: 单参数模式增加世界高度检查 (Bug 83)
+      const newY = this.ctx.camera.position.y + y;
+      if (newY < 0 || newY > 255) {
+        return `错误: 目标高度 ${newY.toFixed(1)} 超出世界边界 (0-255)`;
+      }
+      
+      this.ctx.camera.position.y = newY;
       return `已向上位移 ${y} 格`;
     } else if (args.length === 3) {
       const x = parseFloat(args[0]);
       const y = parseFloat(args[1]);
       const z = parseFloat(args[2]);
       if (isNaN(x) || isNaN(y) || isNaN(z)) return '用法: /tp [x] [y] [z]';
+      
+      // 核心修复：增加世界边界检查 (Bug 71)
+      if (y < 0 || y > 255) {
+        return `错误: 传送高度 ${y.toFixed(1)} 超出世界边界 (0-255)`;
+      }
+
       this.ctx.camera.position.set(x, y, z);
       return `已传送到 ${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}`;
     }
