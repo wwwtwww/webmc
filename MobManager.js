@@ -21,7 +21,41 @@ export class MobManager {
   }
 
   update(delta, playerPos) {
-    // 1. 更新所有存活生物
+    // 1. 核心修复：生物间碰撞斥力 (Bug 59)
+    const mobList = Array.from(this.mobs.values());
+    for (let i = 0; i < mobList.length; i++) {
+      const mobA = mobList[i];
+      if (mobA.isDead) continue;
+      
+      for (let j = i + 1; j < mobList.length; j++) {
+        const mobB = mobList[j];
+        if (mobB.isDead) continue;
+
+        const dist = mobA.group.position.distanceTo(mobB.group.position);
+        const minSafeDist = 0.7; // 生物半径 0.35 * 2
+        
+        if (dist < minSafeDist) {
+          // 简单的排斥逻辑：根据位置差产生微小的位移修正
+          const pushForce = (minSafeDist - dist) * 0.5;
+          
+          // 核心修复: 防重叠斥力失效 (完全重叠时) (Bug 74)
+          const pushVec = new THREE.Vector3().subVectors(mobA.group.position, mobB.group.position);
+          if (dist === 0) {
+            const angle = Math.random() * Math.PI * 2;
+            pushVec.set(Math.cos(angle), 0, Math.sin(angle));
+          }
+          pushVec.normalize().multiplyScalar(pushForce);
+          
+          // 只在水平面应用斥力
+          mobA.group.position.x += pushVec.x;
+          mobA.group.position.z += pushVec.z;
+          mobB.group.position.x -= pushVec.x;
+          mobB.group.position.z -= pushVec.z;
+        }
+      }
+    }
+
+    // 2. 更新所有存活生物
     for (const [id, mob] of this.mobs.entries()) {
       mob.update(delta, this.worldManager, playerPos);
 
