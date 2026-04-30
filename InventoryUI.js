@@ -15,7 +15,7 @@ export class InventoryUI {
 
     // --- 交互状态 ---
     this.holdingItem = null; // 当前手持物品 {id, count}
-    this.craftingSlots = new Array(4).fill(null); // 2x2 合成区
+    this.craftingSlots = new Array(9).fill(null); // 3x3 合成区, max 9
     this.craftingResult = null; // 合成产出预览
     
     // 鼠标跟随的悬浮光标
@@ -164,5 +164,26 @@ export class InventoryUI {
 
   isOpen() {
     return this.uiContainer.style.display === 'flex';
+  }
+
+  setWorkbenchMode(isWorkbench) {
+    this.isWorkbench = isWorkbench;
+    const size = isWorkbench ? 9 : 4;
+    this.craftingSlots = new Array(9).fill(null); // 3x3 max
+    
+    this.craftGrid.innerHTML = '';
+    if (isWorkbench) {
+      this.craftGrid.classList.add('workbench-mode');
+    } else {
+      this.craftGrid.classList.remove('workbench-mode');
+    }
+    
+    for (let i = 0; i < size; i++) {
+      const slot = document.createElement('div');
+      slot.className = 'inv-slot';
+      slot.dataset.type = 'craft';
+      slot.dataset.index = i;
+      this.craftGrid.appendChild(slot);
+    }
   }
 }

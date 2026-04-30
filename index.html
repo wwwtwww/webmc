@@ -246,10 +246,7 @@
           <div>
             <div class="inv-title">Crafting</div>
             <div class="craft-grid" id="crafting-grid">
-              <div class="inv-slot" data-type="craft" data-index="0"></div>
-              <div class="inv-slot" data-type="craft" data-index="1"></div>
-              <div class="inv-slot" data-type="craft" data-index="2"></div>
-              <div class="inv-slot" data-type="craft" data-index="3"></div>
+              <!-- JS 动态生成 -->
             </div>
           </div>
           <div class="craft-arrow">→</div>
@@ -302,6 +299,13 @@
       <div id="console-log" style="max-height: 150px; overflow-y: auto; color: #aaa; margin-bottom: 8px; font-size: 14px; display: flex; flex-direction: column; gap: 2px;"></div>
       <div style="display: flex; align-items: center; gap: 10px;">
         <span style="color: #00ffcc; font-weight: bold;">></span>
+        <input id="console-input" type="text" style="flex-grow: 1; background: transparent; border: none; outline: none; color: #fff; font-size: 16px;" placeholder="输入指令... (例如 /time 12)" autocomplete="off" />
+      </div>
+    </div>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>eight: bold;">></span>
         <input id="console-input" type="text" style="flex-grow: 1; background: transparent; border: none; outline: none; color: #fff; font-size: 16px;" placeholder="输入指令... (例如 /time 12)" autocomplete="off" />
       </div>
     </div>
