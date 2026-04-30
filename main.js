@@ -85,11 +85,13 @@ function takePlayerDamage(amount) {
     playerHp = maxPlayerHp;
     updateHpUI();
     
-    // 核心修复: 死亡清空背包并同步 UI (Bug 70, Bug 73)
+    // 核心修复: 死亡清空背包并分散掉落物，避免碰撞叠加抖动
     for (let i = 0; i < inventoryManager.size; i++) {
       const item = inventoryManager.slots[i];
       if (item) {
-        itemDropManager.spawn(camera.position.x, camera.position.y, camera.position.z, item.id, item.count);
+        const offsetX = (Math.random() - 0.5) * 2.0;
+        const offsetZ = (Math.random() - 0.5) * 2.0;
+        itemDropManager.spawn(camera.position.x + offsetX, camera.position.y, camera.position.z + offsetZ, item.id, item.count);
       }
     }
     inventoryManager.slots.fill(null);
