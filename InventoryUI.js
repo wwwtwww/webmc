@@ -179,11 +179,7 @@ export class InventoryUI {
     }
     
     for (let i = 0; i < size; i++) {
-      const slot = document.createElement('div');
-      slot.className = 'inv-slot';
-      slot.dataset.type = 'craft';
-      slot.dataset.index = i;
-      this.craftGrid.appendChild(slot);
+      this.craftGrid.appendChild(this._createSlot(i, 'craft'));
     }
   }
 }
