@@ -49,13 +49,7 @@ export class InventoryUI {
       }
     });
 
-    // 为合成区和产出槽绑定点击
-    this.craftGrid.querySelectorAll('.inv-slot').forEach(el => {
-      el.addEventListener('click', () => {
-        if (this.onSlotClick) this.onSlotClick(parseInt(el.dataset.index), 'craft');
-      });
-    });
-
+    // 产出槽绑定点击
     this.resultSlot.addEventListener('click', () => {
       if (this.onSlotClick) this.onSlotClick(0, 'result');
     });
@@ -172,6 +166,18 @@ export class InventoryUI {
     this.craftingSlots = new Array(9).fill(null); // 3x3 max
     
     this.craftGrid.innerHTML = '';
+    if (isWorkbench) {
+      this.craftGrid.classList.add('workbench-mode');
+    } else {
+      this.craftGrid.classList.remove('workbench-mode');
+    }
+    
+    for (let i = 0; i < size; i++) {
+      this.craftGrid.appendChild(this._createSlot(i, 'craft'));
+    }
+  }
+}
+innerHTML = '';
     if (isWorkbench) {
       this.craftGrid.classList.add('workbench-mode');
     } else {

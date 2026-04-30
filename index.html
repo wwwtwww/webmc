@@ -217,8 +217,11 @@
       .craft-grid {
         display: grid;
         grid-template-columns: repeat(2, 52px);
-        grid-template-rows: repeat(2, 52px);
-        gap: 2px;
+        gap: 4px;
+        margin-right: 16px;
+      }
+      .craft-grid.workbench-mode {
+        grid-template-columns: repeat(3, 52px);
       }
 
       .craft-arrow {
