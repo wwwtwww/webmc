@@ -120,11 +120,17 @@ export class InventoryUI {
    * 更新合成预览逻辑
    */
   updateCrafting() {
-    const grid = [
-      [this.craftingSlots[0]?.id || null, this.craftingSlots[1]?.id || null],
-      [this.craftingSlots[2]?.id || null, this.craftingSlots[3]?.id || null]
-    ];
-    this.craftingResult = this.craftingManager.checkRecipe(grid);
+    const size = this.isWorkbench ? 3 : 2;
+    const grid2D = [];
+    for (let y = 0; y < size; y++) {
+      const row = [];
+      for (let x = 0; x < size; x++) {
+        const item = this.craftingSlots[y * size + x];
+        row.push(item ? item.id : null);
+      }
+      grid2D.push(row);
+    }
+    this.craftingResult = this.craftingManager.checkRecipe(grid2D);
   }
 
   /**
@@ -166,18 +172,6 @@ export class InventoryUI {
     this.craftingSlots = new Array(9).fill(null); // 3x3 max
     
     this.craftGrid.innerHTML = '';
-    if (isWorkbench) {
-      this.craftGrid.classList.add('workbench-mode');
-    } else {
-      this.craftGrid.classList.remove('workbench-mode');
-    }
-    
-    for (let i = 0; i < size; i++) {
-      this.craftGrid.appendChild(this._createSlot(i, 'craft'));
-    }
-  }
-}
-innerHTML = '';
     if (isWorkbench) {
       this.craftGrid.classList.add('workbench-mode');
     } else {

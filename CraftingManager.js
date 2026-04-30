@@ -91,11 +91,13 @@ export class CraftingManager {
    * 例如 [[null, 1], [null, 1]] 变为 [[1], [1]]
    */
   _normalizeGrid(grid) {
-    let minX = 2, maxX = -1, minY = 2, maxY = -1;
+    const height = grid.length;
+    const width = grid[0].length;
+    let minX = width, maxX = -1, minY = height, maxY = -1;
     let hasItem = false;
 
-    for (let y = 0; y < 2; y++) {
-      for (let x = 0; x < 2; x++) {
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
         if (grid[y][x] !== null) {
           minX = Math.min(minX, x);
           maxX = Math.max(maxX, x);
@@ -122,6 +124,22 @@ export class CraftingManager {
   _comparePatterns(p1, p2) {
     if (p1.length !== p2.length || p1[0].length !== p2[0].length) return false;
     for (let y = 0; y < p1.length; y++) {
+      for (let x = 0; x < p1[y].length; x++) {
+        if (p1[y][x] !== p2[y][x]) return false;
+      }
+    }
+    return true;
+  }
+
+  _arraysEqual(a, b) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+}
+gth; y++) {
       for (let x = 0; x < p1[y].length; x++) {
         if (p1[y][x] !== p2[y][x]) return false;
       }
