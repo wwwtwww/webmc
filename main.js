@@ -227,7 +227,7 @@ function handleResultClick() {
     }
 
     // 消耗合成材料
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < inventoryUI.craftingSlots.length; i++) {
       if (inventoryUI.craftingSlots[i]) {
         inventoryUI.craftingSlots[i].count--;
         if (inventoryUI.craftingSlots[i].count <= 0) inventoryUI.craftingSlots[i] = null;
@@ -248,8 +248,8 @@ function returnHeldAndCraftingItems() {
     inventoryUI.holdingItem.count -= added;
     if (inventoryUI.holdingItem.count <= 0) inventoryUI.holdingItem = null;
   }
-  // 2. 退回 2x2 合成格中的物品
-  for (let i = 0; i < 4; i++) {
+  // 2. 退回合成格中的物品 (支持 2x2 和 3x3)
+  for (let i = 0; i < inventoryUI.craftingSlots.length; i++) {
     const item = inventoryUI.craftingSlots[i];
     if (item) {
       const added = inventoryManager.addItem(item.id, item.count);
@@ -515,7 +515,7 @@ controls.addEventListener('lock', () => {
         itemDropManager.spawn(camera.position.x, camera.position.y, camera.position.z, inventoryUI.holdingItem.id, inventoryUI.holdingItem.count);
         inventoryUI.holdingItem = null;
       }
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < inventoryUI.craftingSlots.length; i++) {
         const item = inventoryUI.craftingSlots[i];
         if (item) {
           itemDropManager.spawn(camera.position.x, camera.position.y, camera.position.z, item.id, item.count);
