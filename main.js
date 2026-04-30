@@ -632,6 +632,13 @@ document.addEventListener('mousedown', (e) => {
       targetBlock = { x: voxelHit.x, y: voxelHit.y, z: voxelHit.z };
       if (miningProgressContainer) miningProgressContainer.style.display = 'block';
     } else {
+      // 核心修复: 右键点击工作台打开 3x3 合成界面 (Bug 90)
+      const clickedBlockId = worldManager.getBlock(voxelHit.x, voxelHit.y, voxelHit.z);
+      if (clickedBlockId === 11) {
+        toggleInventory(true);
+        return;
+      }
+
       const item = inventoryManager.slots[selectedSlot];
       if (item && item.id !== 0 && blockData[item.id]) {
         // 计算放置位置：点击坐标 + 点击面的法线
