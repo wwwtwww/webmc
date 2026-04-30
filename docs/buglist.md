@@ -90,6 +90,10 @@
 *   [x] **Bug 87: 页面关闭时的防抖持久化仍不可靠** - 已将 `visibilitychange` 事件正确绑定到 `document` 上，并引入 `localStorage` 作为同步的 `beforeunload`/`hidden` 回退存储机制。在下一次游戏启动时，`WorldManager` 会自动从 `localStorage` 中将可能被浏览器强行终止的 IndexedDB 未完成写入数据重新持久化，确保 100% 不丢操作。
 *   [x] **Bug 88: 掉落物上限保护的“强制合并”会跨地图吞并远处掉落物** - 已在 `ItemDropManager.js` 的强制合并循环中增加了 $32^2$ 的距离平方校验，确保合并行为仅在附近发生，防止物品瞬移。
 *   [x] **Bug 89: 玩家血量 UI 重叠 (冗余显示)** - 已移除 `index.html` 中旧的 `#hp-ui` 元素，并清理了 `main.js` 中的冗余更新逻辑，现在统一由 `PlayerHUD` 模块负责显示。
+*   [x] **Bug 90: 工作台 3x3 合成无法正常进入** - 已在 `main.js` 中实现了右键点击工作台方块时调用 `toggleInventory(true)`，正确开启 3x3 合成界面。
+*   [x] **Bug 91: 关闭工作台时，3x3 合成格只会回收前 4 个槽位** - 已将 `returnHeldAndCraftingItems` 及相关丢弃逻辑修改为遍历完整的 `craftingSlots.length`，确保 3x3 模式下所有材料都能归还或掉落。
+*   [x] **Bug 92: 点击合成结果后，3x3 工作台材料消耗不完整** - 已重构 `handleResultClick` 的消耗循环，确保 3x3 网格中的所有输入材料都能根据配方正确扣减。
+*   [x] **Bug 93: `index.html` 末尾存在重复/截断的残留 HTML 文本** - 文件在 `</html>` 之后仍然保留了多段重复片段，已清理冗余内容并确保源码干净。
 
 ---
 
