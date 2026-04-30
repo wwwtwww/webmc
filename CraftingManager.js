@@ -28,6 +28,33 @@ const RECIPES = [
       [9, 9]
     ],
     result: { id: 11, count: 1 }
+  },
+  {
+    name: '木镐',
+    pattern: [
+      [9, 9, 9],
+      [null, 10, null],
+      [null, 10, null]
+    ],
+    result: { id: 20, count: 1 }
+  },
+  {
+    name: '木斧',
+    pattern: [
+      [9, 9],
+      [9, 10],
+      [null, 10]
+    ],
+    result: { id: 21, count: 1 }
+  },
+  {
+    name: '木锹',
+    pattern: [
+      [9],
+      [10],
+      [10]
+    ],
+    result: { id: 22, count: 1 }
   }
 ];
 
@@ -124,22 +151,6 @@ export class CraftingManager {
   _comparePatterns(p1, p2) {
     if (p1.length !== p2.length || p1[0].length !== p2[0].length) return false;
     for (let y = 0; y < p1.length; y++) {
-      for (let x = 0; x < p1[y].length; x++) {
-        if (p1[y][x] !== p2[y][x]) return false;
-      }
-    }
-    return true;
-  }
-
-  _arraysEqual(a, b) {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      if (a[i] !== b[i]) return false;
-    }
-    return true;
-  }
-}
-gth; y++) {
       for (let x = 0; x < p1[y].length; x++) {
         if (p1[y][x] !== p2[y][x]) return false;
       }

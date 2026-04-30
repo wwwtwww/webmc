@@ -24,17 +24,21 @@ const chunkSize = 16;      // 区块大小
 
 // --- 数据定义 ---
 const blockData = {
-  1: { name: '草地', color: '#3dad3d' },
-  2: { name: '泥土', color: '#7d542a' },
+  1: { name: '草地', color: '#3dad3d', preferredTool: 'shovel' },
+  2: { name: '泥土', color: '#7d542a', preferredTool: 'shovel' },
   3: { name: '水源', color: '#1a66e6' },
-  4: { name: '木头', color: '#663300' },
+  4: { name: '木头', color: '#663300', preferredTool: 'axe' },
   5: { name: '树叶', color: '#1a801a' },
-  6: { name: '沙子', color: '#e6cc80' },
-  7: { name: '积雪', color: '#f2f2ff' },
+  6: { name: '沙子', color: '#e6cc80', preferredTool: 'shovel' },
+  7: { name: '积雪', color: '#f2f2ff', preferredTool: 'shovel' },
   8: { name: '玻璃', color: '#aaddff' },
-  9: { name: '木板', color: '#a67d3d' },
+  9: { name: '木板', color: '#a67d3d', preferredTool: 'axe' },
   10: { name: '木棍', color: '#7d5e2a' },
-  11: { name: '工作台', color: '#d9a066', placeable: true },
+  11: { name: '工作台', color: '#d9a066', placeable: true, preferredTool: 'axe' },
+  15: { name: '石头', color: '#808080', preferredTool: 'pickaxe', minHarvestLevel: 1 },
+  20: { name: '木镐', color: '#8b5a2b', isTool: true, toolType: 'pickaxe', toolLevel: 1 },
+  21: { name: '木斧', color: '#8b5a2c', isTool: true, toolType: 'axe', toolLevel: 1 },
+  22: { name: '木锹', color: '#8b5a2d', isTool: true, toolType: 'shovel', toolLevel: 1 },
   50: { name: '生猪肉', color: '#ffafb0', placeable: false }
 };
 
@@ -259,7 +263,7 @@ function returnHeldAndCraftingItems() {
   }
 }
 
-function toggleInventory() {
+function toggleInventory(isWorkbench = false) {
   if (!hasSpawned || isConsoleOpen) return; 
 
   if (isInventoryOpen) {
@@ -275,7 +279,7 @@ function toggleInventory() {
         itemDropManager.spawn(camera.position.x, camera.position.y, camera.position.z, inventoryUI.holdingItem.id, inventoryUI.holdingItem.count);
         inventoryUI.holdingItem = null;
       }
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < inventoryUI.craftingSlots.length; i++) {
         const item = inventoryUI.craftingSlots[i];
         if (item) {
           itemDropManager.spawn(camera.position.x, camera.position.y, camera.position.z, item.id, item.count);
@@ -293,6 +297,7 @@ function toggleInventory() {
     controls.lock(); 
   } else {
     isOpeningInventory = true;
+    inventoryUI.setWorkbenchMode(isWorkbench);
     controls.unlock(); 
   }
 }
@@ -311,6 +316,15 @@ let lastFpsUpdate = 0;
 
 function updateDebugPanel() {
   if (!showDebug) return;
+
+  // 核心修复: 实时计算并更新 FPS (Bug 82)
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFpsUpdate >= 1000) {
+    debugFps.innerText = frameCount; // 核心修复: 去掉冗余的 "FPS: " 前缀 (Bug 86)
+    frameCount = 0;
+    lastFpsUpdate = now;
+  }
 
   const pos = camera.position;
   debugPos.innerText = `${pos.x.toFixed(2)} / ${pos.y.toFixed(2)} / ${pos.z.toFixed(2)}`;
