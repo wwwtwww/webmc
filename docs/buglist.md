@@ -94,6 +94,8 @@
 *   [x] **Bug 91: 关闭工作台时，3x3 合成格只会回收前 4 个槽位** - 已将 `returnHeldAndCraftingItems` 及相关丢弃逻辑修改为遍历完整的 `craftingSlots.length`，确保 3x3 模式下所有材料都能归还或掉落。
 *   [x] **Bug 92: 点击合成结果后，3x3 工作台材料消耗不完整** - 已重构 `handleResultClick` 的消耗循环，确保 3x3 网格中的所有输入材料都能根据配方正确扣减。
 *   [x] **Bug 93: `index.html` 末尾存在重复/截断的残留 HTML 文本** - 文件在 `</html>` 之后仍然保留了多段重复片段，已清理冗余内容并确保源码干净。
+*   [x] **Bug 94: 工具物品仍可被右键当作方块放置** - 已在 `blockData` 中为木镐/木斧/木锹增加了 `placeable: false` 属性，防止工具被错误地放置进世界。
+*   [x] **Bug 95: 工作台重新打开时会残留上一次的合成结果预览** - 已在 `InventoryUI.js` 的 `setWorkbenchMode` 中增加了对 `craftingResult` 的重置逻辑，确保每次打开工作台时状态都是干净的。
 
 ---
 

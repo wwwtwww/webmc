@@ -36,9 +36,9 @@ const blockData = {
   10: { name: '木棍', color: '#7d5e2a' },
   11: { name: '工作台', color: '#d9a066', placeable: true, preferredTool: 'axe' },
   15: { name: '石头', color: '#808080', preferredTool: 'pickaxe', minHarvestLevel: 1 },
-  20: { name: '木镐', color: '#8b5a2b', isTool: true, toolType: 'pickaxe', toolLevel: 1 },
-  21: { name: '木斧', color: '#8b5a2c', isTool: true, toolType: 'axe', toolLevel: 1 },
-  22: { name: '木锹', color: '#8b5a2d', isTool: true, toolType: 'shovel', toolLevel: 1 },
+  20: { name: '木镐', color: '#8b5a2b', isTool: true, toolType: 'pickaxe', toolLevel: 1, placeable: false },
+  21: { name: '木斧', color: '#8b5a2c', isTool: true, toolType: 'axe', toolLevel: 1, placeable: false },
+  22: { name: '木锹', color: '#8b5a2d', isTool: true, toolType: 'shovel', toolLevel: 1, placeable: false },
   50: { name: '生猪肉', color: '#ffafb0', placeable: false }
 };
 
@@ -226,7 +226,7 @@ function handleResultClick() {
       inventoryUI.holdingItem.count += result.count;
     }
 
-    // 消耗合成材料
+    // 消耗合成材料 (Bug 92: 确保 3x3 网格所有槽位都被正确消耗)
     for (let i = 0; i < inventoryUI.craftingSlots.length; i++) {
       if (inventoryUI.craftingSlots[i]) {
         inventoryUI.craftingSlots[i].count--;

@@ -170,6 +170,7 @@ export class InventoryUI {
     this.isWorkbench = isWorkbench;
     const size = isWorkbench ? 9 : 4;
     this.craftingSlots = new Array(9).fill(null); // 3x3 max
+    this.craftingResult = null; // 核心修复: 重置合成结果预览 (Bug 95)
     
     this.craftGrid.innerHTML = '';
     if (isWorkbench) {
