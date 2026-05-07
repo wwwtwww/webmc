@@ -39,6 +39,7 @@ const blockData = {
   20: { name: '木镐', color: '#8b5a2b', isTool: true, toolType: 'pickaxe', toolLevel: 1, placeable: false },
   21: { name: '木斧', color: '#8b5a2c', isTool: true, toolType: 'axe', toolLevel: 1, placeable: false },
   22: { name: '木锹', color: '#8b5a2d', isTool: true, toolType: 'shovel', toolLevel: 1, placeable: false },
+  23: { name: '木剑', color: '#8b5a2e', isTool: true, toolType: 'sword', toolLevel: 1, placeable: false },
   50: { name: '生猪肉', color: '#ffafb0', placeable: false }
 };
 
@@ -617,7 +618,11 @@ document.addEventListener('mousedown', (e) => {
       // 寻找对应的 Mob 实例
       for (const mob of mobManager.mobs.values()) {
         if (mob.group === hitGroup || mob.group === hitMob.object.parent.parent) {
-          mob.takeDamage(2, camera.position);
+          // 工具加成：木剑伤害为 4，其余为 2 (Bug Fix: 实现工具伤害逻辑)
+          const heldItem = inventoryManager.slots[selectedSlot];
+          const damage = (heldItem && blockData[heldItem.id]?.toolType === 'sword') ? 4 : 2;
+          
+          mob.takeDamage(damage, camera.position);
           audioManager.playSound('dig', 0.5); // 借用挖掘声作为打击反馈
           return; // 攻击了生物就不再挖掘方块
         }
@@ -789,13 +794,30 @@ function animate() {
 
       if (hitSameBlock) {
         miningGraceTimer = 0.2; // 核心修复：命中目标时重置缓冲时间 (Bug 61)
-        miningProgress += delta * 0.25;
+        
+        // 核心修复: 实现工具挖掘速度加成 (Bug Fix)
+        const heldItem = inventoryManager.slots[selectedSlot];
+        const targetData = blockData[targetBlock.id] || {};
+        const heldData = heldItem ? blockData[heldItem.id] : null;
+        
+        let speedMultiplier = 1.0;
+        if (heldData && heldData.isTool && heldData.toolType === targetData.preferredTool) {
+          speedMultiplier = 5.0; // 匹配工具提升 5 倍速度
+        }
+        
+        miningProgress += delta * 0.25 * speedMultiplier;
         if (miningProgressBar) miningProgressBar.style.width = `${Math.min(miningProgress * 100, 100)}%`;
         if (miningProgress >= 1.0) {
           const blockId = worldManager.getBlock(targetBlock.x, targetBlock.y, targetBlock.z);
           if (blockId !== 0) {
-            // 生成掉落物而非直接入包
-            itemDropManager.spawn(targetBlock.x + 0.5, targetBlock.y + 0.5, targetBlock.z + 0.5, blockId, 1);
+            // 核心修复: 实现采集等级校验 (Bug Fix)
+            // 如果方块有最低等级要求，且当前工具等级不足，则不掉落
+            const minLevel = blockData[blockId]?.minHarvestLevel || 0;
+            const toolLevel = (heldData && heldData.toolType === blockData[blockId]?.preferredTool) ? (heldData.toolLevel || 0) : 0;
+            
+            if (toolLevel >= minLevel) {
+              itemDropManager.spawn(targetBlock.x + 0.5, targetBlock.y + 0.5, targetBlock.z + 0.5, blockId, 1);
+            }
           }
           worldManager.setBlock(targetBlock.x, targetBlock.y, targetBlock.z, 0); audioManager.playSound('dig');
           miningProgress = 0; targetBlock = null; if (miningProgressContainer) miningProgressContainer.style.display = 'none';

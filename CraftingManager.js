@@ -55,6 +55,15 @@ const RECIPES = [
       [10]
     ],
     result: { id: 22, count: 1 }
+  },
+  {
+    name: '木剑',
+    pattern: [
+      [9],
+      [9],
+      [10]
+    ],
+    result: { id: 23, count: 1 }
   }
 ];
 
